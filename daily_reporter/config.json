@@ -1,0 +1,16 @@
+{
+  "deepseek_api_key": "sk-714dfdeaddcf40cfbb8c16584c56cf9c",
+  "tushare_token": "15d0e2fdd93c6f7eced2d5e4e01d2c5a1c3a19d189ab8b206a512899",
+  "fred_api_key": "b6320a718fc57a757d99b2abda26f028",
+  "feishu_app_id": "cli_a94ba9fabaf9dcbd",
+  "feishu_app_secret": "FZYbOlgeIpkcLSFXP7fkfdNIUoUWky6q",
+  "watchlist": {
+    "优然牧业": "9858.HK",
+    "拼多多": "PDD",
+    "CROX": "CROX",
+    "海底捞": "6862.HK",
+    "玖龙纸业": "2689.HK",
+    "苹果": "AAPL",
+    "谷歌": "GOOGL"
+  }
+}
