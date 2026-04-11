@@ -419,6 +419,62 @@ def _clean_expired_pending():
         for k in expired:
             _pending_writes.pop(k, None)
 
+def _handle_url_feed(url: str, open_id: str, token: str):
+    """URL 豁免规则：wechat_parser → Phase 7 → 直接落盘，无需确认"""
+    kb = active_kb_path(open_id)
+    parser = os.path.join(kb, 'tools', 'wechat_parser.py')
+    send_text_message(token, open_id, "⏳ 抓取文章中...")
+    pr = subprocess.run(['python3', parser, url],
+                        capture_output=True, text=True, timeout=30)
+    if pr.returncode != 0:
+        send_text_message(token, open_id,
+                          f"❌ 文章抓取失败：{(pr.stderr or pr.stdout)[:300]}")
+        return
+    path_m = re.search(r'已投递至 Inbox:\s*(.+\.md)', pr.stdout)
+    if not path_m:
+        send_text_message(token, open_id,
+                          f"❌ 无法解析落盘路径：{pr.stdout[:200]}")
+        return
+    raw_path = path_m.group(1).strip()
+    try:
+        raw_content = Path(raw_path).read_text(encoding='utf-8')
+    except Exception as e:
+        send_text_message(token, open_id, f"❌ 读取原文失败：{e}")
+        return
+    # 构建 Phase 7 prompt
+    load_phase_prompts(kb)
+    p7_prompt = _phase_prompt_cache.get(kb, {}).get('p7', '')
+    today = datetime.now().strftime('%Y-%m-%d')
+    prompt = (
+        NO_WRITE_PREFIX +
+        (f"{p7_prompt}\n\n" if p7_prompt else "") +
+        f"请将以下原始文章蒸馏为标准情报卡。\n"
+        f"第一行输出：FILE_PATH: [子目录]/[文件名].md\n\n"
+        f"原文：\n{raw_content[:10000]}"
+    )
+    send_text_message(token, open_id, "⏳ Phase 7 蒸馏中，预计 30-60 秒...")
+    raw = call_claude_print(prompt, timeout=300, open_id=open_id)
+    if raw.startswith('❌') or raw.startswith('⏸️'):
+        send_text_message(token, open_id, raw)
+        return
+    file_path, content = _parse_record_output(raw, today)
+    full_path = Path(kb) / '04_Private_Knowledge' / file_path
+    try:
+        full_path.parent.mkdir(parents=True, exist_ok=True)
+        full_path.write_text(content, encoding='utf-8')
+    except Exception as e:
+        send_text_message(token, open_id, f"❌ 写入失败：{e}")
+        return
+    commit_hash = _git_commit(full_path, kb, f"入库: {full_path.name}")
+    try:
+        rel = full_path.relative_to(kb)
+    except ValueError:
+        rel = full_path
+    send_text_message(token, open_id,
+                      f"✅ 已入库: {rel} | git: {commit_hash}\n"
+                      f"📎 原文存档: {Path(raw_path).name}")
+
+
 def handle_record(open_id: str, content: str, token: str):
     """录入指令：Claude 生成情报卡 → 发预览 → 等 ok"""
     _clean_expired_pending()
@@ -683,7 +739,7 @@ def handle_phase(phase_key: str, extra: str, open_id: str, token: str):
         send_text_message(token, open_id, preview)
     else:
         # 保存为临时文件并发送
-        tmp_path = Path(kb) / 'inbox' / f'_preview_{phase_key}.md'
+        tmp_path = Path(kb) / '04_Private_Knowledge' / '_Raw_Inbox' / f'_preview_{phase_key}.md'
         tmp_path.parent.mkdir(parents=True, exist_ok=True)
         tmp_path.write_text(content, encoding='utf-8')
         send_file_to_user(token, open_id, str(tmp_path))
@@ -819,7 +875,7 @@ def _split_text(text: str, max_len: int) -> list:
 def _save_latest(content: str, open_id: str = ''):
     try:
         kb = active_kb_path(open_id)
-        target = Path(kb) / 'inbox' / 'latest_result.md'
+        target = Path(kb) / '04_Private_Knowledge' / '_Raw_Inbox' / 'latest_result.md'
         target.parent.mkdir(parents=True, exist_ok=True)
         ts = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         target.write_text(f"# 最新结果（{ts}）\n\n{content}\n", encoding='utf-8')
@@ -965,6 +1021,26 @@ def handle_message_async(open_id: str, raw_text: str):
             send_text_message(token, open_id, "⚠️ memo 后请附上内容")
         return
 
+    # ══ URL 投喂（豁免规则：全自动，直接落盘，无需确认）══
+    _URL_RE = re.compile(r'https?://\S+')
+    _url_m = _URL_RE.search(text)
+    _feed_kws = ('投喂', '蒸馏', '存档')
+    _is_feed = (
+        (_url_m and text.strip() == _url_m.group(0))
+        or any(text.startswith(kw + ' ') or text.startswith(kw + '\n') for kw in _feed_kws)
+    )
+    if _is_feed:
+        if _url_m:
+            _feed_url = _url_m.group(0)
+        else:
+            _parts = text.split(None, 1)
+            _feed_url = _parts[1].strip() if len(_parts) > 1 else ''
+        if _feed_url:
+            _handle_url_feed(_feed_url, open_id, token)
+        else:
+            send_text_message(token, open_id, "⚠️ 请附上文章 URL")
+        return
+
     # ══ 第二层：Phase 触发 ══
     phase_key = resolve_phase(text)
     if phase_key:
@@ -1002,7 +1078,7 @@ def handle_message_async(open_id: str, raw_text: str):
                               f"📋 初研底稿预览\n📁 {fp}\n{'─'*30}\n"
                               f"{content}\n{'─'*30}\n回复 ok 确认写入")
         else:
-            tmp = Path(active_kb_path(open_id)) / 'inbox' / '_preview_初研.md'
+            tmp = Path(active_kb_path(open_id)) / '04_Private_Knowledge' / '_Raw_Inbox' / '_preview_初研.md'
             tmp.parent.mkdir(parents=True, exist_ok=True)
             tmp.write_text(content, encoding='utf-8')
             send_file_to_user(token, open_id, str(tmp))

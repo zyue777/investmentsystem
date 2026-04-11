@@ -4,6 +4,8 @@
 
 import json
 import os
+import re
+import sys
 import urllib.request
 import urllib.error
 from datetime import datetime
@@ -142,22 +144,63 @@ def build_morning_commodity(data: dict) -> str:
 
 # ── 3. 自选股日报 ─────────────────────────────────────────────────────────────
 
+def _write_diary_entries(diary_text: str, stocks: dict):
+    """
+    解析 DeepSeek 输出的 [DIARY]...[/DIARY] 内容并写入日记文件。
+    格式：中文股票名|1-2句基本面摘要
+    """
+    try:
+        _root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        if _root not in sys.path:
+            sys.path.insert(0, _root)
+        from sentiment_monitor.diary import write_entry
+    except ImportError as e:
+        print(f'[report_builder] diary import 失败: {e}')
+        return
+
+    diary_map = {}
+    for line in diary_text.split('\n'):
+        line = line.strip()
+        if '|' in line:
+            name, summary = line.split('|', 1)
+            diary_map[name.strip()] = summary.strip()
+
+    for name, info in stocks.items():
+        ticker  = info.get('ticker', '')
+        ann     = info.get('公告', '[无重大公告]')
+        summary = diary_map.get(name, '暂无')
+        try:
+            write_entry(ticker=ticker, name=name,
+                        ann_text=ann, sentiment_text=summary)
+        except Exception as e:
+            print(f'[report_builder] 写日记 {name} 失败: {e}')
+
+
 def build_watchlist(data: dict) -> str:
     today = data.get('生成时间', datetime.now().strftime('%Y-%m-%d'))
     stocks = data.get('stocks', {})
     ai_news = data.get('AI行业动态', '[数据缺失]')
 
-    # 格式化自选股数据
+    # 格式化自选股数据（含 StockTwits 原文，供 DeepSeek 提炼）
     stock_lines = []
     for name, info in stocks.items():
         ticker = info.get('ticker', '')
         price  = info.get('价格', '[数据缺失]')
         ann    = info.get('公告', '[无重大公告]')
-        stock_lines.append(f"  {name}({ticker})  {price}  公告：{ann}")
+        raw    = info.get('舆情原始', [])
+
+        line = f'  {name}({ticker})  {price}  公告：{ann}'
+        if raw:
+            line += '\n  StockTwits近期讨论（原文）：'
+            for i, msg in enumerate(raw[:5], 1):
+                line += f'\n    {i}. {msg}'
+        else:
+            line += '\n  社区讨论：暂无数据'
+        stock_lines.append(line)
 
     stocks_text = '\n'.join(stock_lines)
 
-    prompt = f"""今天是 {today}，请根据以下数据撰写【自选股日报】。
+    prompt = f"""今天是 {today}，请根据以下数据完成两项任务。
 
 --- 自选股数据 ---
 {stocks_text}
@@ -166,17 +209,33 @@ def build_watchlist(data: dict) -> str:
 {ai_news}
 --- 数据结束 ---
 
-输出格式要求：
+严格按以下格式输出，两个标签缺一不可：
+
+[REPORT]
 📌 自选股日报 | {today[:10]}
 
-对每只股票输出一行：
-股票名  涨跌幅  公告情况（一句话，无公告写"无重大公告"）
+（每只股票一行：股票名(代码)  涨跌幅  公告情况一句话）
+（若有StockTwits讨论原文，在下方缩进一行：└ 基本面：从原文提炼1条运营/产品/竞争观点，忽略价格预测和纯交易讨论）
 
-最后两行：
-【雪球/市场关注】简要说明今日市场对哪只股票讨论较多（若数据缺失请写"暂无市场讨论数据"）
-【AI行业】{ai_news[:80]}"""
+【社区关注】今日哪只股票的讨论最有基本面价值（无有效数据写"暂无社区讨论数据"）
+【AI行业】{ai_news[:80]}
+[/REPORT]
+[DIARY]
+（每只股票一行，格式：中文股票名|1-2句基本面摘要，只写原文直接支持的观点，无数据写"暂无"）
+[/DIARY]"""
 
-    return _call_deepseek(prompt)
+    full_output = _call_deepseek(prompt)
+
+    # 解析报告部分（fallback：使用全部输出）
+    report_match = re.search(r'\[REPORT\](.*?)\[/REPORT\]', full_output, re.DOTALL)
+    report_text  = report_match.group(1).strip() if report_match else full_output
+
+    # 解析日记部分并写入文件（side effect，不影响报告返回）
+    diary_match = re.search(r'\[DIARY\](.*?)\[/DIARY\]', full_output, re.DOTALL)
+    if diary_match:
+        _write_diary_entries(diary_match.group(1).strip(), stocks)
+
+    return report_text
 
 
 # ── 4. 每日复盘 ───────────────────────────────────────────────────────────────
