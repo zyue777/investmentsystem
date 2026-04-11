@@ -94,7 +94,7 @@ _pending_writes[open_id] = {path, content, ts, kb, type='new'}
   ↓
 用户回复「ok」→ handle_confirm()
   ↓
-Path(kb) / '04_Private_Knowledge' / path  → write_text()
+Path(kb) / '知识库' / '行业' / path  → write_text()
   ↓
 回复「✅ 已入库\n📁 路径」
 ```
@@ -108,15 +108,15 @@ Path(kb) / '04_Private_Knowledge' / path  → write_text()
 ```
 收到裸 URL（或「投喂/蒸馏/存档 URL」）
   ↓
-python3 tools/wechat_parser.py "[URL]"
+python3 _系统/tools/wechat_parser.py "[URL]"
   ↓
-原文落入 04_Private_Knowledge/_Raw_Inbox/YYYY-MM-DD_WechatRaw_标题.md
+原文落入 _Inbox/YYYY-MM-DD_WechatRaw_标题.md
   ↓
 加载 Phase 7 prompt → call_claude_print()
   ↓
 _parse_record_output() 解析路径和内容
   ↓
-直接写入 Path(kb) / '04_Private_Knowledge' / path（跳过预览和 ok）
+直接写入 Path(kb) / '知识库' / '行业' / path（跳过预览和 ok）
   ↓
 回复「✅ 已入库: 路径\n📎 原文存档: 文件名」
 ```
@@ -127,10 +127,11 @@ _parse_record_output() 解析路径和内容
 
 | Phase | 输出目录 |
 |-------|---------|
-| p5 | `02_Reports/周度雷达_高频预警/` |
-| p2a | `02_Reports/A类_成长周期_月度深研/` |
-| p2b | `02_Reports/B类_刚需供需_月度信号/` |
-| p3 | `03_Watchlist_Pool/` |
+| p5 | `研究/周报月报/周度雷达/` |
+| p2a | `研究/周报月报/` |
+| p2b | `研究/周报月报/` |
+| p3 | `行业筛查/困境反转/` |
+| p10 | `研究/_系统/碎片备忘/_Weekly_Digest/` |
 | p7 / p6 / p6x | 由 Claude 输出 FILE_PATH 决定 |
 
 ---
@@ -139,7 +140,7 @@ _parse_record_output() 解析路径和内容
 
 | `pending['type']` | 路径拼接 |
 |-------------------|---------|
-| `'new'`（录 指令） | `Path(kb) / '04_Private_Knowledge' / pending['path']` |
+| `'new'`（录 指令） | `Path(kb) / '知识库' / '行业' / pending['path']` |
 | `'phase'`（Phase） | `Path(kb) / pending['path']` |
 | `'update'`（框架更新） | `Path(pending['path'])` （已存储绝对路径） |
 
@@ -149,8 +150,8 @@ _parse_record_output() 解析路径和内容
 
 | 用途 | 路径 |
 |------|------|
-| 长回复溢出存档 | `04_Private_Knowledge/_Raw_Inbox/latest_result.md` |
-| Phase/初研长预览 | `04_Private_Knowledge/_Raw_Inbox/_preview_{phase_key}.md` |
+| 长回复溢出存档 | `_Inbox/latest_result.md` |
+| Phase/初研长预览 | `_Inbox/_preview_{phase_key}.md` |
 
 > **禁止**在知识库根目录创建 `inbox/`、`draft/` 等目录（见 CLAUDE.md 操作原则）。
 
@@ -162,7 +163,7 @@ _parse_record_output() 解析路径和内容
 |------|------|
 | `app_id` | 飞书应用 App ID |
 | `app_secret` | 飞书应用 App Secret |
-| `kb_roots` | 多知识库字典，如 `{"周期": "/path/to/kb"}` |
+| `kb_roots` | 多知识库字典，如 `{"投研": "/home/zy/桌面/投研工作台"}` |
 | `default_kb` | 默认激活的知识库名称 |
 
 ---

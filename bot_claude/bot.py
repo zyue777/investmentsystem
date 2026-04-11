@@ -36,13 +36,11 @@ REPLY_MAX_LEN = 2800  # 飞书消息安全长度
 # 录入规范模板（注入 Claude prompt）
 # ═══════════════════════════════════════════════════════════════════════════════
 RECORDING_RULES = """## 输出格式（严格遵守）
-第一行输出文件路径，格式：FILE_PATH: [子目录名]/[文件名].md
+第一行输出文件路径，格式：FILE_PATH: [文件名].md
 然后空一行，输出完整情报卡内容（含YAML frontmatter）。不要输出其他解释。
 
 ## 分类路由
-- 能匹配已有子目录 → 使用该目录
-- 无法匹配或跨行业 → 使用 0_边缘横向品种
-- 宏观策略类 → 使用 宏观策略
+- 知识库采用平铺结构，直接输出文件名，不需要子目录前缀。
 
 ## 文件命名
 {date}_情报卡_[品种名]_[主题简述].md
@@ -74,36 +72,51 @@ status: 活跃
 - 文件末尾保留一个换行符"""
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# Phase 映射（仅日常操作，排除年度选池类）
+# Phase 映射（动态扫描 prompts 目录，无需硬编码文件名）
 # ═══════════════════════════════════════════════════════════════════════════════
-PHASE_MAP = {
-    'p7':  'Phase7_私密纪要_结构化蒸馏_prompt.md',
-    'p5':  'Phase5_周度高频_二阶雷达与事件追踪_prompt.md',
-    'p2a': 'Phase2_月度全景_深度研究生成_prompt.md',
-    'p2b': 'Phase2_月度全景_深度研究生成_prompt.md',
-    'p3':  'Phase3_月度全景_反转排行打分_prompt.md',
-    'p6':  'Phase6_流程质检_完整性核对_prompt.md',
-    'p6x': 'Phase6X_逻辑矛盾质检_Contradiction_Scan_prompt.md',
-}
+# 触发词 → Phase编号
 PHASE_ALIASES = {
-    '处理纪要': 'p7', '蒸馏': 'p7', '周报': 'p5', '雷达': 'p5',
-    '月报a': 'p2a', '月报A': 'p2a', '月报b': 'p2b', '月报B': 'p2b',
-    '分类': 'p3', '质检': 'p6', '矛盾检查': 'p6x',
+    '处理纪要': 'p7', '蒸馏': 'p7',
+    '周报': 'p5', '雷达': 'p5',
+    '月报a': 'p2a', '月报A': 'p2a',
+    '月报b': 'p2b', '月报B': 'p2b',
+    '分类': 'p3', '打分': 'p3', '反转排行': 'p3',
+    '质检': 'p6', '矛盾检查': 'p6x', '矛盾扫描': 'p6x',
+    '滚动更新': 'p4', '差异化更新': 'p4',
+    '提炼备忘': 'p10', '消化memo': 'p10',
+}
+# Phase编号 → prompt文件名前缀（glob扫描两个 prompts 目录）
+# 规则：每个前缀在两个 prompts 目录中只能有一个文件
+PHASE_PREFIXES = {
+    'p2pre': 'Phase2Pre',
+    'p2a':   'Phase02A',
+    'p2b':   'Phase02B',
+    'p3':    'Phase03',
+    'p4':    'Phase04',
+    'p5':    'Phase05',
+    'p6':    'Phase06',
+    'p6x':   'Phase06X',
+    'p7':    'Phase07',
+    'p10':   'Phase10',
 }
 PHASE_TIMEOUT = {
     'p7': 300, 'p5': 600, 'p2a': 600, 'p2b': 600,
-    'p3': 300, 'p6': 180, 'p6x': 300,
+    'p3': 300, 'p4': 600, 'p6': 180, 'p6x': 300, 'p10': 300,
 }
 PHASE_OUTPUT_DIRS = {
-    'p5': '02_Reports/周度雷达_高频预警',
-    'p2a': '02_Reports/A类_成长周期_月度深研',
-    'p2b': '02_Reports/B类_刚需供需_月度信号',
-    'p3': '03_Watchlist_Pool',
+    'p5':  '研究/周报月报/周度雷达',
+    'p2a': '研究/周报月报',
+    'p2b': '研究/周报月报',
+    'p3':  '行业筛查/困境反转',
+    'p4':  '研究/周报月报',
+    'p10': '研究/_系统/碎片备忘/_Weekly_Digest',
 }
 PHASE_LABELS = {
-    'p7': 'Phase7 蒸馏', 'p5': 'Phase5 周报', 'p2a': 'Phase2A 月报',
-    'p2b': 'Phase2B 月报', 'p3': 'Phase3 分类', 'p6': 'Phase6 质检',
-    'p6x': 'Phase6X 矛盾检查',
+    'p7': 'Phase07 蒸馏', 'p5': 'Phase05 周报',
+    'p2a': 'Phase02A 月报', 'p2b': 'Phase02B 月报',
+    'p3': 'Phase03 分类', 'p4': 'Phase04 滚动更新',
+    'p6': 'Phase06 质检', 'p6x': 'Phase06X 矛盾检查',
+    'p10': 'Phase10 备忘提炼',
 }
 
 # 不写文件的指令前缀（注入到所有 Claude 调用）
@@ -141,12 +154,20 @@ def active_kb_path(open_id: str = '') -> str:
     return KB_ROOTS.get(name, list(KB_ROOTS.values())[0])
 
 def get_kb_dir_names(open_id: str = '') -> list:
-    """返回 04_Private_Knowledge/ 下所有子目录名"""
-    pk = Path(active_kb_path(open_id)) / '04_Private_Knowledge'
-    if not pk.exists():
+    """返回知识库中出现过的 industry 值（从情报卡YAML frontmatter提取，去重）"""
+    kb_dir = Path(active_kb_path(open_id)) / '知识库' / '行业'
+    if not kb_dir.exists():
         return []
-    return sorted([d.name for d in pk.iterdir()
-                   if d.is_dir() and not d.name.startswith('.')])
+    industries = set()
+    for f in kb_dir.glob('*.md'):
+        try:
+            text = f.read_text(encoding='utf-8')
+            m = re.search(r'^industry:\s*(.+)$', text, re.MULTILINE)
+            if m:
+                industries.add(m.group(1).strip())
+        except Exception:
+            pass
+    return sorted(industries)
 
 def kb_file_tree(open_id: str = '') -> str:
     kb = Path(active_kb_path(open_id))
@@ -175,11 +196,18 @@ def load_phase_prompts(kb_path: str):
     if kb_path in _phase_prompt_cache:
         return
     cache = {}
-    prompts_dir = Path(kb_path) / '00_Prompts_Library'
-    for key, filename in PHASE_MAP.items():
-        fp = prompts_dir / filename
-        if fp.exists():
-            cache[key] = fp.read_text(encoding='utf-8')
+    search_dirs = [
+        Path(kb_path) / '行业筛查' / 'prompts',
+        Path(kb_path) / '研究' / 'prompts',
+    ]
+    for key, prefix in PHASE_PREFIXES.items():
+        for d in search_dirs:
+            if not d.exists():
+                continue
+            matches = sorted(d.glob(f'{prefix}*.md'))
+            if matches:
+                cache[key] = matches[0].read_text(encoding='utf-8')
+                break
     _phase_prompt_cache[kb_path] = cache
     print(f"[bot_claude] 已缓存 {len(cache)} 个 Phase prompt ({kb_path})")
 
@@ -283,30 +311,28 @@ p6x   矛盾检查     初研 [行业]
 # ═══════════════════════════════════════════════════════════════════════════════
 # 认知框架查看（零 Token）
 # ═══════════════════════════════════════════════════════════════════════════════
-def _fw_path(open_id: str) -> Path:
-    return Path(active_kb_path(open_id)) / '05_Cognitive_Framework'
-
 def cmd_view_xinfa(open_id: str) -> str:
-    f = _fw_path(open_id) / '01_通用投研大心法.md'
+    f = Path(active_kb_path(open_id)) / '投资哲学' / '通用投研大心法.md'
     return f.read_text(encoding='utf-8') if f.exists() else "⚠️ 文件不存在"
 
 def cmd_view_focus(open_id: str) -> str:
-    f = _fw_path(open_id) / '02_当下关注焦点.md'
+    f = Path(active_kb_path(open_id)) / '投资哲学' / '当下关注焦点.md'
     return f.read_text(encoding='utf-8') if f.exists() else "⚠️ 文件不存在"
 
 def cmd_view_atlas(open_id: str, industry: str = '') -> str:
-    f = _fw_path(open_id) / '03_行业核心指标图谱.md'
+    # 图谱 → 行业状态面板（根目录）
+    f = Path(active_kb_path(open_id)) / '行业状态面板.md'
     if not f.exists():
-        return "⚠️ 图谱文件不存在"
+        return "⚠️ 行业状态面板不存在"
     content = f.read_text(encoding='utf-8')
     if not industry:
         headers = [l for l in content.split('\n')
                    if l.startswith('## ') or l.startswith('### ')]
-        return "📊 图谱目录（发 '图谱 行业名' 查看详情）\n\n" + '\n'.join(headers)
+        return "📊 行业状态（发 '图谱 行业名' 查看详情）\n\n" + '\n'.join(headers)
     return _extract_section(content, industry)
 
 def cmd_view_dossier(open_id: str, industry: str) -> str:
-    cards_dir = _fw_path(open_id) / '论点卡'
+    cards_dir = Path(active_kb_path(open_id)) / '研究' / '论点卡'
     if not cards_dir.exists():
         return "⚠️ 论点卡目录不存在"
     matches = [f for f in cards_dir.glob('*.md')
@@ -422,7 +448,7 @@ def _clean_expired_pending():
 def _handle_url_feed(url: str, open_id: str, token: str):
     """URL 豁免规则：wechat_parser → Phase 7 → 直接落盘，无需确认"""
     kb = active_kb_path(open_id)
-    parser = os.path.join(kb, 'tools', 'wechat_parser.py')
+    parser = os.path.join(kb, '_系统', 'tools', 'wechat_parser.py')
     send_text_message(token, open_id, "⏳ 抓取文章中...")
     pr = subprocess.run(['python3', parser, url],
                         capture_output=True, text=True, timeout=30)
@@ -458,7 +484,7 @@ def _handle_url_feed(url: str, open_id: str, token: str):
         send_text_message(token, open_id, raw)
         return
     file_path, content = _parse_record_output(raw, today)
-    full_path = Path(kb) / '04_Private_Knowledge' / file_path
+    full_path = Path(kb) / '知识库' / '行业' / file_path
     try:
         full_path.parent.mkdir(parents=True, exist_ok=True)
         full_path.write_text(content, encoding='utf-8')
@@ -485,7 +511,7 @@ def handle_record(open_id: str, content: str, token: str):
 
     prompt = (NO_WRITE_PREFIX +
               f"你是投资研究知识库录入助手。\n"
-              f"04_Private_Knowledge/ 下已有子目录：{dirs}\n\n"
+              f"知识库/行业/ 已有行业分类：{dirs}\n\n"
               f"{rules}\n\n"
               f"请将以下原始信息结构化为情报卡：\n{content}")
 
@@ -503,7 +529,7 @@ def handle_record(open_id: str, content: str, token: str):
         }
 
     preview = (f"📋 预览（回复 ok 确认写入）\n"
-               f"📁 04_Private_Knowledge/{file_path}\n"
+               f"📁 知识库/行业/{file_path}\n"
                f"{'─' * 30}\n"
                f"{card_content[:2400]}\n"
                f"{'─' * 30}\n"
@@ -526,10 +552,10 @@ def _parse_record_output(raw: str, today: str) -> tuple:
     content = '\n'.join(lines[content_start:]) if content_start < len(lines) else raw
     # 兜底
     if not file_path:
-        file_path = f"0_边缘横向品种/{today}_情报卡_未分类.md"
+        file_path = f"{today}_情报卡_未分类.md"
         content = raw
-    # 确保路径不以 04_Private_Knowledge/ 开头（避免重复）
-    file_path = file_path.replace('04_Private_Knowledge/', '')
+    # 确保路径不以 知识库/行业/ 开头（避免重复）
+    file_path = file_path.replace('知识库/行业/', '')
     return file_path, content
 
 def handle_confirm(open_id: str, token: str):
@@ -543,7 +569,7 @@ def handle_confirm(open_id: str, token: str):
     kb = pending['kb']
     ptype = pending.get('type', 'new')
     if ptype == 'new':
-        full_path = Path(kb) / '04_Private_Knowledge' / pending['path']
+        full_path = Path(kb) / '知识库' / '行业' / pending['path']
     elif ptype == 'phase':
         full_path = Path(kb) / pending['path']
     else:  # 'update' — framework files already store absolute path
@@ -589,7 +615,7 @@ def handle_modify(open_id: str, modification: str, token: str):
             'path': file_path, 'content': card_content, 'ts': time.time(),
         })
 
-    preview = (f"📋 修改后预览\n📁 04_Private_Knowledge/{file_path}\n"
+    preview = (f"📋 修改后预览\n📁 知识库/行业/{file_path}\n"
                f"{'─' * 30}\n{card_content[:2400]}\n{'─' * 30}\n"
                f"回复 ok 确认 | 改 [意见] 继续修改")
     send_text_message(token, open_id, preview)
@@ -620,9 +646,9 @@ def handle_redo(open_id: str, token: str):
 # ═══════════════════════════════════════════════════════════════════════════════
 def handle_framework_update(cmd: str, arg: str, content: str,
                             open_id: str, token: str):
-    fw = _fw_path(open_id)
+    kb = Path(active_kb_path(open_id))
     if cmd == '焦点+':
-        target = fw / '02_当下关注焦点.md'
+        target = kb / '投资哲学' / '当下关注焦点.md'
         if not target.exists():
             send_text_message(token, open_id, "⚠️ 焦点文件不存在"); return
         current = target.read_text(encoding='utf-8')
@@ -631,17 +657,17 @@ def handle_framework_update(cmd: str, arg: str, content: str,
                   f"请按用户意见更新，保持格式不变：\n{content}\n"
                   f"输出更新后的完整文件内容。")
     elif cmd == '图谱+':
-        target = fw / '03_行业核心指标图谱.md'
+        target = kb / '行业状态面板.md'
         if not target.exists():
-            send_text_message(token, open_id, "⚠️ 图谱文件不存在"); return
+            send_text_message(token, open_id, "⚠️ 行业状态面板不存在"); return
         current = target.read_text(encoding='utf-8')
         section = _extract_section(current, arg)
         prompt = (NO_WRITE_PREFIX +
-                  f"图谱'{arg}'段落：\n{section}\n\n"
-                  f"请按以下新数据更新该段落：\n{content}\n"
+                  f"行业状态面板'{arg}'段落：\n{section}\n\n"
+                  f"请按以下新数据更新该段落（只更新关键数据和触发信号字段）：\n{content}\n"
                   f"只输出更新后的该段落。")
     elif cmd == '论+':
-        cards_dir = fw / '论点卡'
+        cards_dir = kb / '研究' / '论点卡'
         matches = [f for f in cards_dir.glob('*.md') if arg in f.stem]
         if not matches:
             send_text_message(token, open_id, f"⚠️ 未找到'{arg}'底稿"); return
@@ -677,7 +703,7 @@ def handle_framework_update(cmd: str, arg: str, content: str,
 def resolve_phase(text: str):
     """解析文本为 phase_key，找不到返回 None"""
     t = text.strip().lower()
-    if t in PHASE_MAP:
+    if t in PHASE_PREFIXES:
         return t
     # 带内容的 p7，如 "p7 xxxxx"
     if t.startswith('p7 ') or t.startswith('p7\n'):
@@ -692,7 +718,7 @@ def handle_phase(phase_key: str, extra: str, open_id: str, token: str):
     prompt_text = cache.get(phase_key, '')
     if not prompt_text:
         send_text_message(token, open_id,
-                          f"❌ Phase prompt 未找到: {PHASE_MAP.get(phase_key)}")
+                          f"❌ Phase prompt 未找到: {PHASE_PREFIXES.get(phase_key)}")
         return
 
     # 构建完整 prompt
@@ -725,7 +751,7 @@ def handle_phase(phase_key: str, extra: str, open_id: str, token: str):
         if out_dir:
             file_path = f"{out_dir}/{today}_{label}.md"
         else:
-            file_path = f"02_Reports/{today}_{label}.md"
+            file_path = f"研究/周报月报/{today}_{label}.md"
 
     with _pending_lock:
         _pending_writes[open_id] = {
@@ -742,7 +768,7 @@ def handle_phase(phase_key: str, extra: str, open_id: str, token: str):
         send_text_message(token, open_id, preview)
     else:
         # 保存为临时文件并发送
-        tmp_path = Path(kb) / '04_Private_Knowledge' / '_Raw_Inbox' / f'_preview_{phase_key}.md'
+        tmp_path = Path(kb) / '_Inbox' / f'_preview_{phase_key}.md'
         tmp_path.parent.mkdir(parents=True, exist_ok=True)
         tmp_path.write_text(content, encoding='utf-8')
         send_file_to_user(token, open_id, str(tmp_path))
@@ -801,19 +827,24 @@ def build_task_prompt(cmd: str, content: str, open_id: str = '') -> str:
         else:
             industry, question = content, '当前周期位置与反转条件分析'
         # 加载该行业底稿
-        dossier_path = _fw_path(open_id) / '论点卡'
+        dossier_path = Path(active_kb_path(open_id)) / '研究' / '论点卡'
         dossier = ''
         if dossier_path.exists():
             matches = [f for f in dossier_path.glob('*.md') if industry in f.stem]
             if matches:
                 dossier = matches[0].read_text(encoding='utf-8')
-        # 查找该行业的情报卡文件列表
-        pk = Path(kb) / '04_Private_Knowledge'
+        # 查找该行业的情报卡文件列表（平铺目录，按YAML industry字段匹配）
+        kb_industry_dir = Path(kb) / '知识库' / '行业'
         industry_files = []
-        for d in pk.iterdir():
-            if d.is_dir() and industry in d.name:
-                industry_files = [f.name for f in d.glob('*.md')]
-                break
+        if kb_industry_dir.exists():
+            for f in kb_industry_dir.glob('*.md'):
+                try:
+                    text_content = f.read_text(encoding='utf-8')
+                    m = re.search(r'^industry:\s*(.+)$', text_content, re.MULTILINE)
+                    if m and industry in m.group(1).strip():
+                        industry_files.append(f.name)
+                except Exception:
+                    pass
         return (NO_WRITE_PREFIX +
                 f"目标行业：{industry}\n"
                 f"底稿：\n{dossier[:3000]}\n\n"
@@ -878,7 +909,7 @@ def _split_text(text: str, max_len: int) -> list:
 def _save_latest(content: str, open_id: str = ''):
     try:
         kb = active_kb_path(open_id)
-        target = Path(kb) / '04_Private_Knowledge' / '_Raw_Inbox' / 'latest_result.md'
+        target = Path(kb) / '_Inbox' / 'latest_result.md'
         target.parent.mkdir(parents=True, exist_ok=True)
         ts = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         target.write_text(f"# 最新结果（{ts}）\n\n{content}\n", encoding='utf-8')
@@ -1060,7 +1091,7 @@ def handle_message_async(open_id: str, raw_text: str):
         send_text_message(token, open_id, f"⏳ 生成 {industry} 初研底稿...")
         prompt = (NO_WRITE_PREFIX +
                   f"请为'{industry}'生成行业研究初步底稿。\n"
-                  f"参照 05_Cognitive_Framework/论点卡/04_行业投资论点卡_模板.md 的格式。\n"
+                  f"参照 研究/论点卡/_模板.md 的格式。\n"
                   f"先网络搜索该行业当前供需格局，再结合知识库已有情报。\n"
                   f"第一行输出 FILE_PATH: 论点卡/{industry}_研究底稿.md")
         raw = call_claude_print(prompt, timeout=600, open_id=open_id)
@@ -1072,7 +1103,7 @@ def handle_message_async(open_id: str, raw_text: str):
             fp = f"论点卡/{industry}_研究底稿.md"
         with _pending_lock:
             _pending_writes[open_id] = {
-                'path': str(Path(active_kb_path(open_id)) / '05_Cognitive_Framework' / fp),
+                'path': str(Path(active_kb_path(open_id)) / '研究' / fp),
                 'content': content, 'ts': time.time(),
                 'original': industry, 'kb': active_kb_path(open_id),
                 'type': 'update',
@@ -1082,7 +1113,7 @@ def handle_message_async(open_id: str, raw_text: str):
                               f"📋 初研底稿预览\n📁 {fp}\n{'─'*30}\n"
                               f"{content}\n{'─'*30}\n回复 ok 确认写入")
         else:
-            tmp = Path(active_kb_path(open_id)) / '04_Private_Knowledge' / '_Raw_Inbox' / '_preview_初研.md'
+            tmp = Path(active_kb_path(open_id)) / '_Inbox' / '_preview_初研.md'
             tmp.parent.mkdir(parents=True, exist_ok=True)
             tmp.write_text(content, encoding='utf-8')
             send_file_to_user(token, open_id, str(tmp))

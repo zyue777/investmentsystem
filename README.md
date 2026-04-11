@@ -15,7 +15,7 @@ investment_system/
 
 知识库路径（两个 bot 共用）：
 ```
-~/桌面/研究workflow优化/周期行业研究/
+~/桌面/投研工作台/
 ```
 
 ---
@@ -58,11 +58,11 @@ kill $(cat logs/bot_claude.pid) $(cat logs/bot_gemini.pid) $(cat logs/daily_repo
 
 ## 文件写入规则（重要）
 
-所有知识库正式内容写入 `04_Private_Knowledge/[子目录]/` 下：
-- ClaudeBot 使用 `Path(kb) / '04_Private_Knowledge' / path`
-- DeepSeekBot URL feed 自动补全 `04_Private_Knowledge/` 前缀
+所有知识库正式内容写入 `知识库/行业/` 下：
+- ClaudeBot 使用 `Path(kb) / '知识库' / '行业' / path`
+- DeepSeekBot URL feed 自动补全 `知识库/行业/` 前缀
 
-临时/预览文件只允许写入 `04_Private_Knowledge/_Raw_Inbox/`，**禁止在知识库根目录创建 `inbox/`、`draft/` 等临时目录**（见知识库 CLAUDE.md）。
+临时/预览文件只允许写入 `_Inbox/`，**禁止在知识库根目录创建 `inbox/`、`draft/` 等临时目录**（见知识库 CLAUDE.md）。
 
 ---
 
@@ -84,25 +84,24 @@ cp daily_reporter/config.json.example daily_reporter/config.json
 
 两个 bot 共用同一个外部知识库，**以下目录必须存在**：
 
-```
-~/桌面/研究workflow优化/周期行业研究/
-├── 00_Prompts_Library/          # ⚠️ bot_claude Phase 功能依赖，缺失则 Phase 命令静默失效
-│   ├── Phase5_周度高频雷达.md
-│   ├── Phase7_私密纪要_蒸馏.md
-│   └── ...（其余 Phase prompt 文件）
-├── 02_Reports/                  # Phase 报告输出目录
-│   ├── 周度雷达_高频预警/
-│   ├── A类_成长周期_月度深研/
-│   └── B类_刚需供需_月度信号/
-├── 03_Watchlist_Pool/           # 反转排行打分输出
-├── 04_Private_Knowledge/        # 所有情报卡写入此目录
-│   └── _Raw_Inbox/              # 临时文件（URL 原文 / 长回复溢出），唯一允许的临时目录
-├── 05_Cognitive_Framework/      # 论点卡 / 图谱 / 心法 / 焦点
-└── 08_Investment_Memos/
-    └── _Inbox/                  # memo / 备忘 写入此目录
+```text
+~/桌面/投研工作台/
+├── 行业筛查/
+│   └── prompts/          # Phase00/01/01.5/03/06/06X prompt 文件
+├── 研究/
+│   ├── prompts/          # Phase02A/02B/2Pre/2Maintain/04/05/07/08/09/10 prompt 文件
+│   ├── 论点卡/           # 行业研究底稿（静态逻辑框架）
+│   └── 周报月报/         # Phase 报告输出
+├── 知识库/
+│   └── 行业/             # 情报卡（平铺，YAML frontmatter含industry字段）
+├── 投资哲学/              # 心法 / 当下关注焦点
+├── 行业状态面板.md        # 动态现状面板（图谱）
+├── _Inbox/               # 临时文件（URL原文 / 长回复溢出 / 初研预览）
+├── 动线/README.md        # 人读速查表（触发词→Phase→文件）
+└── CLAUDE.md             # Claude Code 路由索引（极简，~20行）
 ```
 
-> **临时文件约定**：任何临时/预览文件只能写入 `04_Private_Knowledge/_Raw_Inbox/`，**禁止**在知识库根目录创建 `inbox/`、`draft/` 等目录。
+> **临时文件约定**：任何临时/预览文件只能写入 `_Inbox/`，**禁止**在知识库根目录创建 `inbox/`、`draft/` 等目录。
 
 ---
 

@@ -473,7 +473,7 @@ def handle_message_async(open_id: str, raw_text: str):
             if not _fp.startswith('04_Private_Knowledge/'):
                 _fp = '04_Private_Knowledge/' + _fp
             with _pending_lock:
-                _pending_writes[open_id] = {'file_path': _fp, 'content': _fc, 'ts': time.time()}
+                _pending_writes[open_id] = {'file_path': _fp, 'content': _fc, 'ts': _time.time()}
             _preview = _fc[:400] + ('…' if len(_fc) > 400 else '')
             _reply = (
                 f"📋 蒸馏完成\n{_expl}\n\n"
@@ -520,10 +520,10 @@ def handle_message_async(open_id: str, raw_text: str):
             result = write_kb_file(file_path, content)
             # git commit
             commit_hash = '(跳过)'
+            clean = file_path.lstrip('/').lstrip('\\')
             try:
                 import subprocess as _sp
                 kb = Path(KB_PATH)
-                clean = file_path.lstrip('/').lstrip('\\')
                 full_path = (kb / clean).resolve()
                 _sp.run(['git', 'add', str(full_path)],
                         cwd=str(kb), capture_output=True, timeout=10)
