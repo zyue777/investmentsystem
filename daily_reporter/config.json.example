@@ -1,0 +1,11 @@
+{
+  "deepseek_api_key": "sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+  "tushare_token": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+  "fred_api_key": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+  "feishu_app_id": "cli_xxxxxxxxxxxxxxxxxxxx",
+  "feishu_app_secret": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+  "watchlist": {
+    "股票名称A": "XXXX.HK",
+    "股票名称B": "XXXX"
+  }
+}

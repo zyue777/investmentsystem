@@ -1,0 +1,7 @@
+{
+  "app_id": "cli_xxxxxxxxxxxxxxxxxxxx",
+  "app_secret": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+  "deepseek_api_key": "sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+  "kb_path": "/home/yourname/path/to/knowledge_base",
+  "port": 5001
+}

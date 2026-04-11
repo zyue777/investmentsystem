@@ -1,0 +1,8 @@
+{
+  "app_id": "cli_xxxxxxxxxxxxxxxxxxxx",
+  "app_secret": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+  "kb_roots": {
+    "周期": "/home/yourname/path/to/knowledge_base"
+  },
+  "default_kb": "周期"
+}
