@@ -465,13 +465,12 @@ def _handle_url_feed(url: str, open_id: str, token: str):
     except Exception as e:
         send_text_message(token, open_id, f"❌ 写入失败：{e}")
         return
-    commit_hash = _git_commit(full_path, kb, f"入库: {full_path.name}")
     try:
         rel = full_path.relative_to(kb)
     except ValueError:
         rel = full_path
     send_text_message(token, open_id,
-                      f"✅ 已入库: {rel} | git: {commit_hash}\n"
+                      f"✅ 已入库: {rel}\n"
                       f"📎 原文存档: {Path(raw_path).name}")
     # 发送情报卡内容供查阅
     card_preview = content if len(content) <= REPLY_MAX_LEN else content[:REPLY_MAX_LEN] + "\n\n…（内容过长，请查看文件）"
@@ -480,7 +479,6 @@ def _handle_url_feed(url: str, open_id: str, token: str):
 
 def handle_record(open_id: str, content: str, token: str):
     """录入指令：Claude 生成情报卡 → 发预览 → 等 ok"""
-    _clean_expired_pending()
     dirs = get_kb_dir_names(open_id)
     today = datetime.now().strftime('%Y-%m-%d')
     rules = RECORDING_RULES.replace('{date}', today)
@@ -543,9 +541,12 @@ def handle_confirm(open_id: str, token: str):
         return
 
     kb = pending['kb']
-    if pending['type'] == 'new':
+    ptype = pending.get('type', 'new')
+    if ptype == 'new':
         full_path = Path(kb) / '04_Private_Knowledge' / pending['path']
-    else:  # framework update
+    elif ptype == 'phase':
+        full_path = Path(kb) / pending['path']
+    else:  # 'update' — framework files already store absolute path
         full_path = Path(pending['path'])
 
     try:
@@ -555,14 +556,11 @@ def handle_confirm(open_id: str, token: str):
         send_text_message(token, open_id, f"❌ 写入失败：{e}")
         return
 
-    commit_hash = _git_commit(full_path, kb,
-                              f"飞书录入: {full_path.name}")
     try:
         rel = full_path.relative_to(kb)
     except ValueError:
         rel = full_path
-    msg = f"✅ 已入库\n📁 {rel}\n📌 git: {commit_hash}"
-    send_text_message(token, open_id, msg)
+    send_text_message(token, open_id, f"✅ 已入库\n📁 {rel}")
 
 def handle_modify(open_id: str, modification: str, token: str):
     """改 [意见] → 基于原卡片 + 意见重新生成"""
@@ -634,6 +632,8 @@ def handle_framework_update(cmd: str, arg: str, content: str,
                   f"输出更新后的完整文件内容。")
     elif cmd == '图谱+':
         target = fw / '03_行业核心指标图谱.md'
+        if not target.exists():
+            send_text_message(token, open_id, "⚠️ 图谱文件不存在"); return
         current = target.read_text(encoding='utf-8')
         section = _extract_section(current, arg)
         prompt = (NO_WRITE_PREFIX +
@@ -948,6 +948,7 @@ def handle_message_async(open_id: str, raw_text: str):
     token = get_tenant_access_token(APP_ID, APP_SECRET)
     if not token:
         return
+    _clean_expired_pending()
     text = raw_text.strip()
 
     # ══ 第一层：零 token 系统指令 ══
