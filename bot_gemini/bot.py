@@ -487,8 +487,31 @@ def handle_message_async(open_id: str, raw_text: str):
         with _pending_lock:
             pending = _pending_writes.pop(open_id, None)
         if pending:
-            result = write_kb_file(pending['file_path'], pending['content'])
-            send_text_message(token, open_id, result)
+            file_path = pending['file_path']
+            content   = pending['content']
+            result = write_kb_file(file_path, content)
+            # git commit
+            commit_hash = '(跳过)'
+            try:
+                import subprocess as _sp
+                kb = Path(KB_PATH)
+                clean = file_path.lstrip('/').lstrip('\\')
+                full_path = (kb / clean).resolve()
+                _sp.run(['git', 'add', str(full_path)],
+                        cwd=str(kb), capture_output=True, timeout=10)
+                r = _sp.run(['git', 'commit', '-m', f'飞书录入: {full_path.name}'],
+                            cwd=str(kb), capture_output=True, text=True, timeout=10)
+                import re as _re
+                m = _re.search(r'[a-f0-9]{7,}', r.stdout)
+                commit_hash = m.group(0) if m else '已提交'
+            except Exception as _e:
+                commit_hash = f'(git失败:{_e})'
+            # 发确认 + 内容预览
+            rel = clean
+            send_text_message(token, open_id,
+                              f"✅ 已入库: {rel} | git: {commit_hash}")
+            card_preview = content if len(content) <= REPLY_MAX_LEN else content[:REPLY_MAX_LEN] + "\n\n…（内容过长，请查看文件）"
+            send_text_message(token, open_id, f"📋 情报卡内容：\n\n{card_preview}")
         else:
             send_text_message(token, open_id, "⚠️ 没有待确认的写入操作")
         return
