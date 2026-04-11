@@ -66,6 +66,46 @@ kill $(cat logs/bot_claude.pid) $(cat logs/bot_gemini.pid) $(cat logs/daily_repo
 
 ---
 
+## 配置说明
+
+三个模块各有 `config.json`，**不入 git**（`.gitignore` 已屏蔽）。  
+首次部署参照各目录的 `config.json.example` 创建：
+
+```bash
+cp bot_claude/config.json.example   bot_claude/config.json
+cp bot_gemini/config.json.example   bot_gemini/config.json
+cp daily_reporter/config.json.example daily_reporter/config.json
+# 然后填入真实的 app_id / app_secret / api_key
+```
+
+---
+
+## 知识库目录结构
+
+两个 bot 共用同一个外部知识库，**以下目录必须存在**：
+
+```
+~/桌面/研究workflow优化/周期行业研究/
+├── 00_Prompts_Library/          # ⚠️ bot_claude Phase 功能依赖，缺失则 Phase 命令静默失效
+│   ├── Phase5_周度高频雷达.md
+│   ├── Phase7_私密纪要_蒸馏.md
+│   └── ...（其余 Phase prompt 文件）
+├── 02_Reports/                  # Phase 报告输出目录
+│   ├── 周度雷达_高频预警/
+│   ├── A类_成长周期_月度深研/
+│   └── B类_刚需供需_月度信号/
+├── 03_Watchlist_Pool/           # 反转排行打分输出
+├── 04_Private_Knowledge/        # 所有情报卡写入此目录
+│   └── _Raw_Inbox/              # 临时文件（URL 原文 / 长回复溢出），唯一允许的临时目录
+├── 05_Cognitive_Framework/      # 论点卡 / 图谱 / 心法 / 焦点
+└── 08_Investment_Memos/
+    └── _Inbox/                  # memo / 备忘 写入此目录
+```
+
+> **临时文件约定**：任何临时/预览文件只能写入 `04_Private_Knowledge/_Raw_Inbox/`，**禁止**在知识库根目录创建 `inbox/`、`draft/` 等目录。
+
+---
+
 ## 详细文档
 
 - [ClaudeBot 工作流](bot_claude/README.md)
