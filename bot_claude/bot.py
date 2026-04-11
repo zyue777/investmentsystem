@@ -473,6 +473,9 @@ def _handle_url_feed(url: str, open_id: str, token: str):
     send_text_message(token, open_id,
                       f"✅ 已入库: {rel} | git: {commit_hash}\n"
                       f"📎 原文存档: {Path(raw_path).name}")
+    # 发送情报卡内容供查阅
+    card_preview = content if len(content) <= REPLY_MAX_LEN else content[:REPLY_MAX_LEN] + "\n\n…（内容过长，请查看文件）"
+    send_text_message(token, open_id, f"📋 情报卡内容：\n\n{card_preview}")
 
 
 def handle_record(open_id: str, content: str, token: str):

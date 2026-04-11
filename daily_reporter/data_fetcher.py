@@ -16,9 +16,21 @@ import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta
 from email.utils import parsedate_to_datetime
 
+import re
 import yfinance as yf
 import akshare as ak
 import tushare as ts
+
+# ── 财联社快讯优先级关键词 ─────────────────────────────────────────────────────
+_PRIORITY_KEYWORDS = [
+    '央行', '加息', '降息', '关税', '制裁', '地缘', '战争', '冲突',
+    '暴跌', '熔断', '危机', '流动性', '破产', '违约', 'CPI', 'GDP',
+    '非农', '美联储', 'Fed', '鲍威尔', '经济数据', '政策',
+]
+
+def _cls_priority(title: str) -> int:
+    """命中关键词越多，优先级越高"""
+    return sum(1 for kw in _PRIORITY_KEYWORDS if kw in title)
 
 # ── 初始化 Tushare ────────────────────────────────────────────────────────────
 _DIR = os.path.dirname(__file__)
@@ -322,7 +334,8 @@ def fetch_morning_stock() -> dict:
     # 美股科技巨头（用于亮点点评）
     tech = {}
     for name, sym in [('英伟达NVDA', 'NVDA'), ('苹果AAPL', 'AAPL'),
-                      ('微软MSFT', 'MSFT'), ('特斯拉TSLA', 'TSLA'), ('Meta', 'META')]:
+                      ('谷歌GOOGL', 'GOOGL'), ('Meta', 'META'),
+                      ('微软MSFT', 'MSFT'), ('特斯拉TSLA', 'TSLA')]:
         tech[name] = _fmt_price(_yf_price(sym), '$')
     data['美股科技巨头'] = tech
 
@@ -337,28 +350,45 @@ def fetch_morning_stock() -> dict:
         sectors[name] = _fmt_price(_yf_price(sym))
     data['美股板块ETF'] = sectors
 
-    # 财联社全球快讯（前 10 条，供 DeepSeek 定位大涨/大跌原因）
+    # 财联社全球快讯（前 10 条，关键词优先排序，供 DeepSeek 定位大涨/大跌原因）
     try:
         df = ak.stock_info_global_cls()
         if not df.empty:
+            rows = [row for _, row in df.head(20).iterrows()]
+            # 关键词命中多的排前，保持最多 10 条
+            rows_sorted = sorted(
+                rows,
+                key=lambda r: _cls_priority(str(r.get('标题', '') or r.get('内容', ''))),
+                reverse=True
+            )
             lines = []
-            for _, row in df.head(10).iterrows():
+            for row in rows_sorted[:10]:
                 t     = str(row.get('发布时间', ''))[:5]
                 title = str(row.get('标题', '') or row.get('内容', ''))[:100]
                 lines.append(f"[{t}] {title}")
             data['财联社快讯'] = '\n'.join(lines)
         else:
             data['财联社快讯'] = '[数据缺失]'
-    except Exception as e:
-        data['财联社快讯'] = f'[数据缺失]'
+    except Exception:
+        data['财联社快讯'] = '[数据缺失]'
 
-    # 今日宏观日程
+    # 今日宏观日程（多抓几行，交给 DeepSeek 过滤重要事件）
     try:
         cal = ak.news_economic_baidu()
         if not cal.empty:
             today = datetime.now().strftime('%Y-%m-%d')
-            rows = cal[cal.get('date', cal.columns[0]).astype(str).str.startswith(today)] if 'date' in cal.columns else cal.head(5)
-            data['宏观日历'] = '\n'.join(rows.iloc[:, 1].astype(str).head(5).tolist()) if not rows.empty else '[无重要事件]'
+            if 'date' in cal.columns:
+                rows = cal[cal['date'].astype(str).str.startswith(today)]
+            else:
+                rows = cal.head(10)
+            if not rows.empty:
+                # 把全部列都拼出来，让 AI 能看到时间、事项、重要性等字段
+                lines = []
+                for _, r in rows.head(10).iterrows():
+                    lines.append('  |  '.join(str(v) for v in r.values if str(v).strip()))
+                data['宏观日历'] = '\n'.join(lines)
+            else:
+                data['宏观日历'] = '[无重要事件]'
         else:
             data['宏观日历'] = '[数据缺失]'
     except Exception:
