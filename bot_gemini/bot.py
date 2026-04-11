@@ -60,7 +60,7 @@ DEEPSEEK_URL   = "https://api.deepseek.com/v1/chat/completions"
 DEEPSEEK_MODEL = "deepseek-chat"
 
 REPLY_MAX_LEN      = 3000
-LATEST_RESULT_FILE = 'inbox/latest_result_deepseek.md'
+LATEST_RESULT_FILE = '04_Private_Knowledge/_Raw_Inbox/latest_result_deepseek.md'
 
 # ── 状态存储（内存） ───────────────────────────────────────────────────────────
 _processed_msg_ids: set = set()
@@ -77,7 +77,12 @@ def list_kb_files() -> list:
     kb = Path(KB_PATH)
     if not kb.exists():
         return []
-    return [p for p in kb.rglob('*') if p.is_file()]
+    return [
+        p for p in kb.rglob('*')
+        if p.is_file()
+        and '_Raw_Inbox' not in p.parts
+        and 'inbox' not in [pt.lower() for pt in p.parts]
+    ]
 
 
 def kb_files_str() -> str:
@@ -368,6 +373,90 @@ def handle_message_async(open_id: str, raw_text: str):
         return
     if text == '帮助':
         send_text_message(token, open_id, cmd_help())
+        return
+
+    # ② URL 投喂（抓取原文 → DeepSeek 蒸馏 → 写入确认）
+    _URL_RE = re.compile(r'https?://\S+')
+    _url_m = _URL_RE.search(text)
+    _feed_kws = ('投喂', '蒸馏', '存档')
+    _is_feed = (
+        (_url_m and text.strip() == _url_m.group(0))  # 裸 URL
+        or any(text.startswith(kw + ' ') or text.startswith(kw + '\n') for kw in _feed_kws)
+    )
+    if _is_feed:
+        if _url_m:
+            _feed_url = _url_m.group(0)
+        else:
+            _parts = text.split(None, 1)
+            _feed_url = _parts[1].strip() if len(_parts) > 1 else ''
+        if not _feed_url:
+            send_text_message(token, open_id, "⚠️ 请附上文章 URL")
+            return
+        send_text_message(token, open_id, "⏳ 正在抓取文章，请稍候...")
+        import subprocess as _sp
+        _parser = os.path.join(KB_PATH, 'tools', 'wechat_parser.py')
+        _pr = _sp.run(['python3', _parser, _feed_url],
+                      capture_output=True, text=True, timeout=30)
+        if _pr.returncode != 0:
+            send_text_message(token, open_id,
+                              f"❌ 文章抓取失败：{(_pr.stderr or _pr.stdout)[:300]}")
+            return
+        # 解析生成的 raw 文件路径
+        _path_m = re.search(r'已投递至 Inbox:\s*(.+\.md)', _pr.stdout)
+        if not _path_m:
+            send_text_message(token, open_id,
+                              f"❌ 无法解析落盘路径：{_pr.stdout[:200]}")
+            return
+        _raw_path = _path_m.group(1).strip()
+        try:
+            _raw_content = Path(_raw_path).read_text(encoding='utf-8')
+        except Exception as _e:
+            send_text_message(token, open_id, f"❌ 读取原文失败：{_e}")
+            return
+        # 调用 DeepSeek 蒸馏
+        _distill_msgs = [
+            {
+                "role": "system",
+                "content": (
+                    "你是一名专业投资研究助手。请将用户提供的原始文章提炼为标准情报卡。\n"
+                    "输出格式严格遵守：\n"
+                    "第一行：FILE_PATH: [子目录]/[YYYY-MM-DD]_情报卡_[品种名]_[主题简述].md\n"
+                    "然后空一行，输出完整情报卡 Markdown（含 YAML frontmatter）。\n\n"
+                    "情报卡三段式：\n"
+                    "## 🧊 绝对物理参数域 (Hard Facts)\n"
+                    "[量化数据、价格、产能等客观事实]\n\n"
+                    "## 🟡 情报倾向鉴定 (Subjective Bias)\n"
+                    "- 情况鉴定：【多头/空头/中性/无立场】\n"
+                    "- 底色分析：[说明]\n\n"
+                    "## 🎯 跟踪锚点 (Next Stage Anchors)\n"
+                    "- [锚点] [事项] | [时间节点] | [判断条件]\n\n"
+                    "子目录路由：匹配已有子目录 / 无匹配用 0_边缘横向品种 / 宏观类用 宏观策略"
+                )
+            },
+            {
+                "role": "user",
+                "content": f"请蒸馏以下文章：\n\n{_raw_content[:8000]}"
+            }
+        ]
+        send_text_message(token, open_id, "⏳ 正在蒸馏，预计 20-40 秒...")
+        _distill_reply = call_deepseek(_distill_msgs)
+        # 解析写入计划并进入确认流程
+        _parsed = parse_write_plan(_distill_reply)
+        if _parsed:
+            _expl, _fp, _fc = _parsed
+            with _pending_lock:
+                _pending_writes[open_id] = {'file_path': _fp, 'content': _fc}
+            _preview = _fc[:400] + ('…' if len(_fc) > 400 else '')
+            _reply = (
+                f"📋 蒸馏完成\n{_expl}\n\n"
+                f"目标文件：{_fp}\n\n"
+                f"内容预览：\n{_preview}\n\n"
+                f"─────\n回复【确认】写入，回复【取消】放弃"
+            )
+            send_text_message(token, open_id, truncate_reply(_reply))
+        else:
+            # AI 未按格式输出，直接展示蒸馏结果
+            send_text_message(token, open_id, truncate_reply(f"📋 蒸馏结果\n\n{_distill_reply}"))
         return
 
     # ② 备忘录快捷存储（零 Token，直接写文件）

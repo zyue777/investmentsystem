@@ -158,6 +158,114 @@ def _fetch_investing_news(n: int = 5, hours_back: int = 16) -> str:
     return '\n'.join(lines) if lines else '[数据缺失]'
 
 
+# ── 公告关键词过滤 ─────────────────────────────────────────────────────────────
+
+_ANN_KEEP = [
+    '并购', '收购', '重组', '合并', '私有化', '要约',
+    '定增', '配股', '募资', '融资', '发行股份',
+    '减持', '增持', '质押', '股权变动', '回购',
+    '业绩', '盈利', '盈警', '盈喜', '财报', '年报', '中报', '季报',
+    '股东大会', 'AGM', '分红', '派息', '股息',
+    'Earnings', 'Buyback', 'Acquisition', 'Merger',
+    'Dividend', 'Revenue', 'Guidance', 'Profit warning',
+]
+_ANN_SKIP = [
+    '董事会', '委任', '辞任', '独立非执行董事',
+    '审计委员会', '薪酬委员会', '授权一般',
+    '变更公司秘书', '更改股份过户', '代理人表格',
+]
+_ANN_TAGS = [
+    (['回购'],                          '【回购】'),
+    (['减持'],                          '【减持】'),
+    (['增持'],                          '【增持】'),
+    (['业绩', '盈警', '盈喜', '财报', '年报', '中报', '季报', 'Earnings', 'Profit'], '【业绩】'),
+    (['并购', '收购', '重组', '合并', 'Acquisition', 'Merger'],                    '【并购】'),
+    (['定增', '配股', '募资', '融资', '发行股份'],                                  '【融资】'),
+    (['股东大会', 'AGM'],               '【股东会】'),
+    (['分红', '派息', '股息', 'Dividend'], '【分红】'),
+    (['私有化', '要约'],                '【私有化】'),
+]
+
+
+def _is_major_ann(title: str) -> bool:
+    if any(k in title for k in _ANN_SKIP):
+        return False
+    return any(k in title for k in _ANN_KEEP)  # 必须明确命中 KEEP 才保留
+
+
+def _tag_ann(title: str) -> str:
+    for keywords, tag in _ANN_TAGS:
+        if any(k in title for k in keywords):
+            return f'{tag}{title}'
+    return title
+
+
+def _fetch_eastmoney_anns(ticker: str, days_back: int = 2) -> str:
+    """
+    通过东方财富公告接口抓取 HK 股最近重大公告（无需 API Key）。
+    过滤掉例行董事会/委员会等非重大公告，保留并购/回购/业绩等。
+    """
+    import urllib.parse
+    code = ticker.replace('.HK', '').zfill(5)
+    today = datetime.now()
+    start_d = (today - timedelta(days=days_back)).strftime('%Y%m%d')
+    end_d   = today.strftime('%Y%m%d')
+    url = 'https://np-anotice-stock.eastmoney.com/api/security/ann?' + urllib.parse.urlencode({
+        'sr': '-1', 'page_index': '1', 'page_size': '15',
+        'type': 'A', 'stock_list': code,
+        'begin_time': start_d, 'end_time': end_d,
+        'client_source': 'web',
+    })
+    try:
+        req = urllib.request.Request(url, headers={
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'Referer': f'https://quote.eastmoney.com/hk/{code}.html',
+        })
+        with urllib.request.urlopen(req, timeout=12) as r:
+            data = json.loads(r.read().decode('utf-8'))
+        items = (data.get('data') or {}).get('list') or []
+        major = []
+        seen = set()
+        for it in items:
+            # 优先取中文标题，fallback 英文
+            raw_title = it.get('title_ch') or it.get('title') or ''
+            # title_ch 格式可能是 "公司名|标题"，取 | 后面的部分
+            title = raw_title.split('|', 1)[-1].strip() if '|' in raw_title else raw_title.strip()
+            if not title or title in seen:
+                continue
+            if _is_major_ann(title):
+                seen.add(title)
+                major.append(_tag_ann(title))
+        if not major:
+            return '[无重大公告]'
+        return '；'.join(major[:2])
+    except Exception as e:
+        print(f'[data_fetcher] 东方财富公告 {ticker} 失败: {e}')
+        return '[公告接口暂不可用]'
+
+
+def _fetch_stocktwits_raw(ticker: str, max_msgs: int = 8) -> list:
+    """
+    从 StockTwits 抓取美股近期讨论原文列表（供 DeepSeek 提炼基本面要点）。
+    无需 API Key，返回去 HTML 实体的消息列表，失败返回空列表。
+    """
+    import html as _html
+    url = f'https://api.stocktwits.com/api/2/streams/symbol/{ticker}.json?limit={max_msgs}'
+    try:
+        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+        with urllib.request.urlopen(req, timeout=10) as r:
+            data = json.loads(r.read().decode('utf-8'))
+        result = []
+        for m in data.get('messages', []):
+            body = _html.unescape((m.get('body') or '').strip()).replace('\n', ' ')
+            if len(body) >= 20:
+                result.append(body[:160])
+        return result
+    except Exception as e:
+        print(f'[data_fetcher] StockTwits {ticker} 失败: {e}')
+        return []
+
+
 # ── 1. 晨报·股票版 数据 ────────────────────────────────────────────────────────
 
 def fetch_morning_stock() -> dict:
@@ -465,33 +573,36 @@ def fetch_watchlist() -> dict:
         pd = _yf_price(ticker)
         info['价格'] = _fmt_price(pd)
 
-        # 2. 公告扫描
+        # 2. 公告扫描（HK + US 均用 yfinance .news，按重大关键词过滤）
+        # 只保留明确含有该股票 ticker/简称 的标题，避免无关新闻混入
+        ticker_hint = ticker.replace('.HK', '').upper()
         ann_text = '[无重大公告]'
-        if ticker.endswith('.HK'):
-            # 港股用 tushare（港股代码如 09858.HK → 09858）
-            try:
-                hk_code = ticker.replace('.HK', '').zfill(5) + '.HK'
-                anns = _pro.anns(ts_code=hk_code, start_date=yest, end_date=yest,
-                                 ann_type='A')
-                if anns is not None and not anns.empty:
-                    titles = anns['title'].dropna().head(3).tolist()
-                    ann_text = '；'.join(titles) if titles else '[无重大公告]'
-            except Exception:
-                ann_text = '[公告接口暂不可用]'
-        else:
-            # 美股：yfinance .news (最近新闻作为公告替代)
-            try:
-                t = yf.Ticker(ticker)
-                news = t.news
-                if news:
-                    recent = [n['content']['title'] for n in news[:2]
-                              if 'content' in n and 'title' in n['content']]
-                    ann_text = '；'.join(recent) if recent else '[无新闻]'
-            except Exception:
-                ann_text = '[数据缺失]'
+        try:
+            t = yf.Ticker(ticker)
+            news = t.news or []
+            major = []
+            for n in news[:8]:
+                title = (n.get('content') or {}).get('title') or n.get('title') or ''
+                if not title:
+                    continue
+                title_up = title.upper()
+                # 标题中需含 ticker 或括号格式（如 (CROX)、SEHK:9858）才纳入
+                has_ticker = (ticker_hint in title_up or
+                              f'({ticker_hint})' in title_up or
+                              f'({ticker.replace(".HK","")})' in title_up)
+                if has_ticker and _is_major_ann(title):
+                    major.append(_tag_ann(title))
+            ann_text = '；'.join(major[:2]) if major else '[无重大公告]'
+        except Exception:
+            ann_text = '[数据缺失]'
         info['公告'] = ann_text
 
-        # 3. AI行业新闻（只在最后一条单独处理）
+        # 3. 社区舆情原文（美股：StockTwits；港股：待雪球接入）
+        if not ticker.endswith('.HK'):
+            info['舆情原始'] = _fetch_stocktwits_raw(ticker)
+        else:
+            info['舆情原始'] = []
+
         data['stocks'][name] = info
 
     # 4. AI/科技行业重大新闻（取一条）
