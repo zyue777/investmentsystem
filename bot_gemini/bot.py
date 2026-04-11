@@ -61,14 +61,25 @@ DEEPSEEK_MODEL = "deepseek-chat"
 
 REPLY_MAX_LEN      = 3000
 LATEST_RESULT_FILE = '04_Private_Knowledge/_Raw_Inbox/latest_result_deepseek.md'
+PENDING_TIMEOUT    = 1800  # 30 分钟后自动清除待确认操作
 
 # ── 状态存储（内存） ───────────────────────────────────────────────────────────
 _processed_msg_ids: set = set()
 _msg_id_lock = threading.Lock()
 
-# 等待确认的写文件操作：{open_id: {"file_path": ..., "content": ...}}
+# 等待确认的写文件操作：{open_id: {"file_path": ..., "content": ..., "ts": ...}}
 _pending_writes: dict = {}
 _pending_lock = threading.Lock()
+
+import time as _time
+
+def _clean_expired_pending():
+    now = _time.time()
+    with _pending_lock:
+        expired = [k for k, v in _pending_writes.items()
+                   if now - v.get('ts', now) > PENDING_TIMEOUT]
+        for k in expired:
+            _pending_writes.pop(k, None)
 
 
 # ── 知识库辅助 ────────────────────────────────────────────────────────────────
@@ -361,6 +372,7 @@ def handle_message_async(open_id: str, raw_text: str):
 
     # 自动注册用户（首次发消息即注册，供定时任务主动推送）
     _register_user(open_id)
+    _clean_expired_pending()
 
     text = raw_text.strip()
 
@@ -418,24 +430,36 @@ def handle_message_async(open_id: str, raw_text: str):
             {
                 "role": "system",
                 "content": (
-                    "你是一名专业投资研究助手。请将用户提供的原始文章提炼为标准情报卡。\n"
-                    "输出格式严格遵守：\n"
-                    "第一行：FILE_PATH: [子目录]/[YYYY-MM-DD]_情报卡_[品种名]_[主题简述].md\n"
-                    "然后空一行，输出完整情报卡 Markdown（含 YAML frontmatter）。\n\n"
-                    "情报卡三段式：\n"
+                    "你是一名专业投资研究助手。请将用户提供的原始文章提炼为标准情报卡。\n\n"
+                    "情报卡三段式骨架（必须包含）：\n"
                     "## 🧊 绝对物理参数域 (Hard Facts)\n"
-                    "[量化数据、价格、产能等客观事实]\n\n"
+                    "  量化数据、价格、产能等客观事实及因果链\n\n"
                     "## 🟡 情报倾向鉴定 (Subjective Bias)\n"
-                    "- 情况鉴定：【多头/空头/中性/无立场】\n"
-                    "- 底色分析：[说明]\n\n"
+                    "  - 情况鉴定：【多头/空头/中性/无立场】\n"
+                    "  - 底色分析：[说明]\n\n"
                     "## 🎯 跟踪锚点 (Next Stage Anchors)\n"
-                    "- [锚点] [事项] | [时间节点] | [判断条件]\n\n"
-                    "子目录路由：匹配已有子目录 / 无匹配用 0_边缘横向品种 / 宏观类用 宏观策略"
+                    "  - [锚点] [事项] | [时间节点] | [判断条件]\n\n"
+                    "子目录路由规则：\n"
+                    "  - 能匹配行业已有子目录 → 用该目录名\n"
+                    "  - 宏观/策略类 → 宏观策略\n"
+                    "  - 无法匹配 → 0_边缘横向品种\n\n"
+                    "文件命名格式：YYYY-MM-DD_情报卡_[品种名]_[主题简述].md\n\n"
+                    "⚠️ 必须严格使用以下结构标记，不得省略或改写标记名称：\n"
+                    "===FILE_PATH===\n"
+                    "[子目录名]/[文件名].md\n"
+                    "===END_PATH===\n\n"
+                    "===FILE_CONTENT===\n"
+                    "[完整情报卡 Markdown，含 YAML frontmatter]\n"
+                    "===END_CONTENT==="
                 )
             },
             {
                 "role": "user",
-                "content": f"请蒸馏以下文章：\n\n{_raw_content[:8000]}"
+                "content": (
+                    f"请将以下原始文章蒸馏为标准情报卡，"
+                    f"输出必须包含 ===FILE_PATH=== 和 ===FILE_CONTENT=== 标记块：\n\n"
+                    f"{_raw_content[:8000]}"
+                )
             }
         ]
         send_text_message(token, open_id, "⏳ 正在蒸馏，预计 20-40 秒...")
@@ -444,8 +468,12 @@ def handle_message_async(open_id: str, raw_text: str):
         _parsed = parse_write_plan(_distill_reply)
         if _parsed:
             _expl, _fp, _fc = _parsed
+            # 确保路径包含 04_Private_Knowledge/ 前缀
+            _fp = _fp.lstrip('/')
+            if not _fp.startswith('04_Private_Knowledge/'):
+                _fp = '04_Private_Knowledge/' + _fp
             with _pending_lock:
-                _pending_writes[open_id] = {'file_path': _fp, 'content': _fc}
+                _pending_writes[open_id] = {'file_path': _fp, 'content': _fc, 'ts': time.time()}
             _preview = _fc[:400] + ('…' if len(_fc) > 400 else '')
             _reply = (
                 f"📋 蒸馏完成\n{_expl}\n\n"
@@ -547,6 +575,7 @@ def handle_message_async(open_id: str, raw_text: str):
                 _pending_writes[open_id] = {
                     'file_path': file_path,
                     'content':   file_content,
+                    'ts':        _time.time(),
                 }
             preview = file_content[:400] + ('…' if len(file_content) > 400 else '')
             reply = (
