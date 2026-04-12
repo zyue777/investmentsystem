@@ -229,11 +229,11 @@ def _fetch_eastmoney_anns(ticker: str, days_back: int = 2) -> str:
         'client_source': 'web',
     })
     try:
-        req = urllib.request.Request(url, headers={
+        req = urllib.request.Request(url, headers={  # type: ignore[attr-defined]
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
             'Referer': f'https://quote.eastmoney.com/hk/{code}.html',
         })
-        with urllib.request.urlopen(req, timeout=12) as r:
+        with urllib.request.urlopen(req, timeout=12) as r:  # type: ignore[attr-defined]
             data = json.loads(r.read().decode('utf-8'))
         items = (data.get('data') or {}).get('list') or []
         major = []
@@ -592,7 +592,7 @@ def fetch_watchlist() -> dict:
     返回7只自选股的前日涨跌幅、公告摘要、相关新闻。
     在 8:25 左右调用。
     """
-    data = {'stocks': {}}
+    data: dict = {'stocks': {}}
     today = datetime.now()
     yest  = (today - timedelta(days=1)).strftime('%Y%m%d')
 
@@ -839,7 +839,7 @@ def fetch_weekend_summary() -> dict:
     """
     周日晚间汇总：自选股（周五收盘）+ 周末重大国内外新闻 + AI产业动态。
     """
-    data = {'stocks': {}}
+    data: dict = {'stocks': {}}
 
     # 自选股（yfinance，取最近收盘）
     for name, ticker in WATCHLIST.items():
