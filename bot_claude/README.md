@@ -30,8 +30,6 @@ ok / 确认           执行上一个待确认写入
 p7 [内容]           Phase 7 — 私密纪要结构化蒸馏
 p5                  Phase 5 — 周度高频雷达
 p2a / p2b           Phase 2A/2B — 月度深研（成长/刚需）
-p3                  Phase 3 — 反转排行打分
-p6 / p6x            Phase 6/6X — 流程质检 / 矛盾检查
 
 焦点+ [内容]        更新当下关注焦点
 图谱+ [行业] [数据] 更新行业核心指标图谱
@@ -67,7 +65,7 @@ hh / 更多           查看完整帮助
 │   └─ 裸 URL 或 投喂/蒸馏/存档 前缀
 │       → wechat_parser.py → _Raw_Inbox → Phase 7 → 直接落盘 → git commit
 │
-├─ 第二层：Phase 触发（p7/p5/p2a/p2b/p3/p6/p6x 及别名）
+├─ 第二层：Phase 触发（p7/p5/p2a/p2b/p4/p10 及别名）
 │   └─ 加载 prompt → Claude → _pending_writes → ok → 写入 → git commit
 │
 └─ 第三层：智能任务指令
@@ -130,9 +128,8 @@ _parse_record_output() 解析路径和内容
 | p5 | `研究/周报月报/周度雷达/` |
 | p2a | `研究/周报月报/` |
 | p2b | `研究/周报月报/` |
-| p3 | `行业筛查/困境反转/` |
-| p10 | `研究/_系统/碎片备忘/_Weekly_Digest/` |
-| p7 / p6 / p6x | 由 Claude 输出 FILE_PATH 决定 |
+| p10 | `投资哲学/碎片备忘/_Weekly_Digest/` |
+| p7 | 由 Claude 输出 FILE_PATH 决定 |
 
 ---
 

@@ -36,14 +36,16 @@ REPLY_MAX_LEN = 2800  # 飞书消息安全长度
 # 录入规范模板（注入 Claude prompt）
 # ═══════════════════════════════════════════════════════════════════════════════
 RECORDING_RULES = """## 输出格式（严格遵守）
-第一行输出文件路径，格式：FILE_PATH: [文件名].md
+第一行输出文件路径，格式：FILE_PATH: [子目录]/[文件名].md
 然后空一行，输出完整情报卡内容（含YAML frontmatter）。不要输出其他解释。
 
-## 分类路由
-- 知识库采用平铺结构，直接输出文件名，不需要子目录前缀。
+## 分类路由（必须判断）
+- 内容主体是某一只具体股票（电话会纪要、个股研报、公司公告）→ FILE_PATH: 个股/[文件名].md
+- 内容主体是行业/品种/宏观/大宗商品 → FILE_PATH: 行业/[文件名].md
+- 判断依据：标题或内容中有具体公司名、股票代码、"XX公司"字样 → 个股；其余 → 行业
 
 ## 文件命名
-{date}_情报卡_[品种名]_[主题简述].md
+{date}_情报卡_[品种或公司名]_[主题简述].md
 
 ## YAML frontmatter
 ---
@@ -80,10 +82,10 @@ PHASE_ALIASES = {
     '周报': 'p5', '雷达': 'p5',
     '月报a': 'p2a', '月报A': 'p2a',
     '月报b': 'p2b', '月报B': 'p2b',
-    '分类': 'p3', '打分': 'p3', '反转排行': 'p3',
-    '质检': 'p6', '矛盾检查': 'p6x', '矛盾扫描': 'p6x',
+
     '滚动更新': 'p4', '差异化更新': 'p4',
     '提炼备忘': 'p10', '消化memo': 'p10',
+    '交流': 'p11', 'p11': 'p11',
 }
 # Phase编号 → prompt文件名前缀（glob扫描两个 prompts 目录）
 # 规则：每个前缀在两个 prompts 目录中只能有一个文件
@@ -91,32 +93,30 @@ PHASE_PREFIXES = {
     'p2pre': 'Phase2Pre',
     'p2a':   'Phase02A',
     'p2b':   'Phase02B',
-    'p3':    'Phase03',
     'p4':    'Phase04',
     'p5':    'Phase05',
-    'p6':    'Phase06',
-    'p6x':   'Phase06X',
     'p7':    'Phase07',
     'p10':   'Phase10',
+    'p11':   'Phase11',
 }
 PHASE_TIMEOUT = {
     'p7': 300, 'p5': 600, 'p2a': 600, 'p2b': 600,
-    'p3': 300, 'p4': 600, 'p6': 180, 'p6x': 300, 'p10': 300,
+    'p4': 600, 'p10': 300, 'p11': 600,
 }
 PHASE_OUTPUT_DIRS = {
     'p5':  '研究/周报月报/周度雷达',
     'p2a': '研究/周报月报',
     'p2b': '研究/周报月报',
-    'p3':  '行业筛查/困境反转',
     'p4':  '研究/周报月报',
-    'p10': '研究/_系统/碎片备忘/_Weekly_Digest',
+    'p10': '投资哲学/碎片备忘/_Weekly_Digest',
+    'p11': '知识库/个股',
 }
 PHASE_LABELS = {
     'p7': 'Phase07 蒸馏', 'p5': 'Phase05 周报',
     'p2a': 'Phase02A 月报', 'p2b': 'Phase02B 月报',
-    'p3': 'Phase03 分类', 'p4': 'Phase04 滚动更新',
-    'p6': 'Phase06 质检', 'p6x': 'Phase06X 矛盾检查',
+    'p4': 'Phase04 滚动更新',
     'p10': 'Phase10 备忘提炼',
+    'p11': 'Phase11 公司交流',
 }
 
 # 不写文件的指令前缀（注入到所有 Claude 调用）
@@ -289,10 +289,6 @@ def cmd_help_more() -> str:
 图谱 [行业]         查看行业图谱段
 图谱+ [行业] [内容]  更新图谱
 
-── 研究流程 ──
-p3    结构分类      p6   质检
-p6x   矛盾检查     初研 [行业]
-
 ── 对比汇总 ──
 比 [行业A] [行业B]  横向对比
 总 [主题]          汇总
@@ -445,6 +441,17 @@ def _clean_expired_pending():
         for k in expired:
             _pending_writes.pop(k, None)
 
+def classify_intent(content: str, open_id: str) -> str:
+    """智能前置分流器：判断使用p7还是p11"""
+    prompt = (NO_WRITE_PREFIX + 
+              "你是智能意图分类器。请阅读下文文本的头部信息，判断它属于哪一类：\n"
+              "1. 如果是：公司财报电话会议纪要、业绩说明会、管理层交流、董秘问答等【客观公司业绩交流汇报】，输出 'p11'。\n"
+              "2. 如果是：券商研报、行业深度分析、产业专家访谈、买方观点等【主观研判/外部观点】，输出 'p7'。\n"
+              "只输出 'p11' 或 'p7'，严禁输出其他任何字符。\n\n"
+              f"待分类正文前段：\n{content[:2000]}")
+    res = call_claude_print(prompt, timeout=60, open_id=open_id).strip().lower()
+    return 'p11' if 'p11' in res else 'p7'
+
 def _handle_url_feed(url: str, open_id: str, token: str):
     """URL 豁免规则：wechat_parser → Phase 7 → 直接落盘，无需确认"""
     kb = active_kb_path(open_id)
@@ -467,24 +474,29 @@ def _handle_url_feed(url: str, open_id: str, token: str):
     except Exception as e:
         send_text_message(token, open_id, f"❌ 读取原文失败：{e}")
         return
-    # 构建 Phase 7 prompt
+    # 智能前置路由判定
+    send_text_message(token, open_id, "⏳ 智能路由判定中...")
+    phase_choice = classify_intent(raw_content, open_id)
+    label = PHASE_LABELS.get(phase_choice, phase_choice)
+    send_text_message(token, open_id, f"🔄 命中 {label} 管线，开始提取与结构化...")
+
+    # 构建 Phase prompt
     load_phase_prompts(kb)
-    p7_prompt = _phase_prompt_cache.get(kb, {}).get('p7', '')
+    p_prompt = _phase_prompt_cache.get(kb, {}).get(phase_choice, '')
     today = datetime.now().strftime('%Y-%m-%d')
     prompt = (
         NO_WRITE_PREFIX +
-        (f"{p7_prompt}\n\n" if p7_prompt else "") +
-        f"请将以下原始文章蒸馏为标准情报卡。\n"
-        f"第一行输出：FILE_PATH: [子目录]/[文件名].md\n\n"
-        f"原文：\n{raw_content[:10000]}"
+        (f"{p_prompt}\n\n" if p_prompt else "") +
+        f"请将以下原始文章依照上面要求的结构进行处理。\n"
+        f"第一行输出必须严格遵循指定的 FILE_PATH: 格式落盘，后续空行接内容。\n\n"
+        f"原文：\n{raw_content[:20000]}"
     )
-    send_text_message(token, open_id, "⏳ Phase 7 蒸馏中，预计 30-60 秒...")
-    raw = call_claude_print(prompt, timeout=300, open_id=open_id)
+    raw = call_claude_print(prompt, timeout=600, open_id=open_id)
     if raw.startswith('❌') or raw.startswith('⏸️'):
         send_text_message(token, open_id, raw)
         return
     file_path, content = _parse_record_output(raw, today)
-    full_path = Path(kb) / '知识库' / '行业' / file_path
+    full_path = Path(kb) / '知识库' / file_path  # file_path 已含 行业/ 或 个股/ 前缀
     try:
         full_path.parent.mkdir(parents=True, exist_ok=True)
         full_path.write_text(content, encoding='utf-8')
@@ -504,18 +516,25 @@ def _handle_url_feed(url: str, open_id: str, token: str):
 
 
 def handle_record(open_id: str, content: str, token: str):
-    """录入指令：Claude 生成情报卡 → 发预览 → 等 ok"""
+    """录入指令：智能判定 p7 或 p11 → Claude生成 → 发预览 → 等 ok"""
     dirs = get_kb_dir_names(open_id)
     today = datetime.now().strftime('%Y-%m-%d')
-    rules = RECORDING_RULES.replace('{date}', today)
+    
+    send_text_message(token, open_id, "⏳ 智能路由判定中...")
+    phase_choice = classify_intent(content, open_id)
+    label = PHASE_LABELS.get(phase_choice, phase_choice)
+    send_text_message(token, open_id, f"🔄 采用 {label} 规范处理中...")
+    
+    kb = active_kb_path(open_id)
+    load_phase_prompts(kb)
+    p_prompt = _phase_prompt_cache.get(kb, {}).get(phase_choice, '')
 
     prompt = (NO_WRITE_PREFIX +
-              f"你是投资研究知识库录入助手。\n"
-              f"知识库/行业/ 已有行业分类：{dirs}\n\n"
-              f"{rules}\n\n"
-              f"请将以下原始信息结构化为情报卡：\n{content}")
+              f"知识库已有行业分类参考：{dirs}\n\n"
+              f"{p_prompt}\n\n"
+              f"请将以下原始信息依照上面要求的结构进行处理。\n第一行严格输出 FILE_PATH: [路径]：\n{content[:20000]}")
 
-    raw = call_claude_print(prompt, timeout=180, open_id=open_id)
+    raw = call_claude_print(prompt, timeout=600, open_id=open_id)
     if raw.startswith('❌') or raw.startswith('⏸️'):
         send_text_message(token, open_id, raw)
         return
@@ -529,7 +548,7 @@ def handle_record(open_id: str, content: str, token: str):
         }
 
     preview = (f"📋 预览（回复 ok 确认写入）\n"
-               f"📁 知识库/行业/{file_path}\n"
+               f"📁 知识库/{file_path}\n"
                f"{'─' * 30}\n"
                f"{card_content[:2400]}\n"
                f"{'─' * 30}\n"
@@ -554,8 +573,11 @@ def _parse_record_output(raw: str, today: str) -> tuple:
     if not file_path:
         file_path = f"{today}_情报卡_未分类.md"
         content = raw
-    # 确保路径不以 知识库/行业/ 开头（避免重复）
-    file_path = file_path.replace('知识库/行业/', '')
+    # 剥除知识库根前缀（避免重复拼接）
+    file_path = file_path.replace('知识库/行业/', '').replace('知识库/个股/', '')
+    # 保留 行业/ 或 个股/ 子目录前缀作为路由信号，其余情况默认路由行业
+    if not file_path.startswith('行业/') and not file_path.startswith('个股/'):
+        file_path = '行业/' + file_path
     return file_path, content
 
 def handle_confirm(open_id: str, token: str):
@@ -569,7 +591,8 @@ def handle_confirm(open_id: str, token: str):
     kb = pending['kb']
     ptype = pending.get('type', 'new')
     if ptype == 'new':
-        full_path = Path(kb) / '知识库' / '行业' / pending['path']
+        # file_path 已含 行业/ 或 个股/ 前缀，直接拼在知识库下
+        full_path = Path(kb) / '知识库' / pending['path']
     elif ptype == 'phase':
         full_path = Path(kb) / pending['path']
     else:  # 'update' — framework files already store absolute path
@@ -615,7 +638,7 @@ def handle_modify(open_id: str, modification: str, token: str):
             'path': file_path, 'content': card_content, 'ts': time.time(),
         })
 
-    preview = (f"📋 修改后预览\n📁 知识库/行业/{file_path}\n"
+    preview = (f"📋 修改后预览\n📁 知识库/{file_path}\n"
                f"{'─' * 30}\n{card_content[:2400]}\n{'─' * 30}\n"
                f"回复 ok 确认 | 改 [意见] 继续修改")
     send_text_message(token, open_id, preview)
