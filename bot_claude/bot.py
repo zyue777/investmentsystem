@@ -8,10 +8,8 @@ from pathlib import Path
 import lark_oapi as lark
 from lark_oapi.api.im.v1 import P2ImMessageReceiveV1
 
-import sys
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'shared'))
-from feishu_utils import (get_tenant_access_token, send_text_message,
-                           send_file_to_user)
+from shared.feishu_utils import (get_tenant_access_token, send_text_message,
+                                 send_file_to_user)
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # 配置
@@ -1071,7 +1069,7 @@ def handle_message_async(open_id: str, raw_text: str):
         parts = text.split(None, 1)
         memo_content = parts[1].strip() if len(parts) > 1 else ''
         if memo_content:
-            from memo_handler import save_memo
+            from shared.memo_handler import save_memo
             rel_path, git_hash = save_memo(memo_content, active_kb_path(open_id))
             send_text_message(token, open_id,
                               f"📝 已记录\n📁 {rel_path}\n📌 git: {git_hash}")

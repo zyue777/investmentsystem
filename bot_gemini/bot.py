@@ -23,7 +23,7 @@ _ROOT_DIR   = os.path.dirname(_BOT_DIR)
 _SHARED_DIR = os.path.join(_ROOT_DIR, 'shared')
 sys.path.insert(0, _ROOT_DIR)
 sys.path.insert(0, _SHARED_DIR)
-from feishu_utils import get_tenant_access_token, send_text_message
+from shared.feishu_utils import get_tenant_access_token, send_text_message
 
 # ── user_registry：记录用户 open_id，供 scheduler 主动推送使用 ────────────────
 REGISTRY_PATH = os.path.join(_SHARED_DIR, 'user_registry.json')
@@ -270,9 +270,11 @@ def build_messages(prefix: str, content: str) -> list:
     system = {
         "role": "system",
         "content": (
-            "你是一名专业的投资研究助手，服务于一位专业投资人。"
-            "你有主动判断能力：问题涉及知识库时主动引用，不涉及时直接基于专业知识回答。"
-            "对写入操作要谨慎准确，按指定格式给出结构化输出。"
+            "你是一名严密客观的投资研究助手，服务于一位专业投资人。\n"
+            "【绝对纪律】：\n"
+            "1. 绝不产生幻觉（No Hallucinations）：如果你没有联网能力、缺乏实时数据、遇到不知道的问题或知识库中无相关材料，请直接、明确且简短地回答“目前无法获取该信息”或“缺乏参考不能回答”。绝对不要模拟数据、编造事实、生造逻辑，也不要有大段废话。\n"
+            "2. 知识库优先：如果用户提供或指定了知识库文件，你的分析必须100%基于文件内容。若内容不足以支持深度分析，请直言“资料不足”，不许自行脑补延展。\n"
+            "3. 话术极简：拒绝客套，拒绝过度发散解释，结论先行，直击要害。"
         )
     }
 
@@ -390,10 +392,10 @@ def handle_message_async(open_id: str, raw_text: str):
     # ② URL 投喂（抓取原文 → DeepSeek 蒸馏 → 写入确认）
     _URL_RE = re.compile(r'https?://\S+')
     _url_m = _URL_RE.search(text)
-    _feed_kws = ('投喂', '蒸馏', '存档')
+    _feed_kws = ('投喂', '蒸馏', '存档', '归档')
     _is_feed = (
         (_url_m and text.strip() == _url_m.group(0))  # 裸 URL
-        or any(text.startswith(kw + ' ') or text.startswith(kw + '\n') for kw in _feed_kws)
+        or any(text.startswith(kw + ' ') or text.startswith(kw + '\n') for kw in _feed_kws) or any(text.startswith(kw + '+') for kw in _feed_kws)
     )
     if _is_feed:
         if _url_m:
@@ -406,7 +408,7 @@ def handle_message_async(open_id: str, raw_text: str):
             return
         send_text_message(token, open_id, "⏳ 正在抓取文章，请稍候...")
         import subprocess as _sp
-        _parser = os.path.join(KB_PATH, 'tools', 'wechat_parser.py')
+        _parser = os.path.join(KB_PATH, '_系统', 'tools', 'wechat_parser.py')
         _pr = _sp.run(['python3', _parser, _feed_url],
                       capture_output=True, text=True, timeout=30)
         if _pr.returncode != 0:
@@ -494,7 +496,7 @@ def handle_message_async(open_id: str, raw_text: str):
         memo_content = parts[1].strip() if len(parts) > 1 else ''
         if memo_content:
             sys.path.insert(0, _SHARED_DIR)
-            from memo_handler import save_memo
+            from shared.memo_handler import save_memo
             rel_path, git_hash = save_memo(memo_content, KB_PATH)
             send_text_message(token, open_id,
                               f"📝 已记录\n📁 {rel_path}\n📌 git: {git_hash}")

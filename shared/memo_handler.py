@@ -1,6 +1,6 @@
 # shared/memo_handler.py
 # 投资备忘快捷存储 —— 被 bot_claude 和 bot_gemini 共同调用
-# 收到 "memo xxx" → 原封不动追加到 08_Investment_Memos/_Inbox/YYYY-MM-DD_投资思考.md
+# 收到 "memo xxx" → 原封不动追加到 投资哲学/碎片备忘/_Inbox/YYYY-MM-DD_投资思考.md
 # → git commit → 返回确认信息
 
 import os
@@ -17,7 +17,7 @@ def save_memo(text: str, kb_path: str) -> tuple:
     """
     today = datetime.now().strftime('%Y-%m-%d')
     time_str = datetime.now().strftime('%H:%M')
-    rel_path = f"08_Investment_Memos/_Inbox/{today}_投资思考.md"
+    rel_path = f"投资哲学/碎片备忘/_Inbox/{today}_投资思考.md"
     full_path = Path(kb_path) / rel_path
 
     full_path.parent.mkdir(parents=True, exist_ok=True)
