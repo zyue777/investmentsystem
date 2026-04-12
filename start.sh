@@ -22,7 +22,7 @@ mkdir -p "$LOGS_DIR"
 
 # ── 启动 bot_claude（长连接模式，无需端口）────────────────────────────────────
 echo "[start.sh] 启动 bot_claude ..."
-nohup "$PYTHON" "$SCRIPT_DIR/bot_claude/bot.py" \
+nohup bash -c "cd '$SCRIPT_DIR' && '$PYTHON' bot_claude/bot.py" \
     > "$LOGS_DIR/bot_claude.log" 2>&1 &
 BOT_CLAUDE_PID=$!
 echo "$BOT_CLAUDE_PID" > "$LOGS_DIR/bot_claude.pid"
@@ -30,7 +30,7 @@ echo "[start.sh] bot_claude 已启动，PID=$BOT_CLAUDE_PID，日志: $LOGS_DIR/
 
 # ── 启动 bot_gemini（端口 5001）──────────────────────────────────────────────
 echo "[start.sh] 启动 bot_gemini ..."
-nohup "$PYTHON" "$SCRIPT_DIR/bot_gemini/bot.py" \
+nohup bash -c "cd '$SCRIPT_DIR' && '$PYTHON' bot_gemini/bot.py" \
     > "$LOGS_DIR/bot_gemini.log" 2>&1 &
 BOT_GEMINI_PID=$!
 echo "$BOT_GEMINI_PID" > "$LOGS_DIR/bot_gemini.pid"

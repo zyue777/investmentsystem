@@ -1,9 +1,14 @@
 # bot_claude/bot.py — 飞书投研机器人 V3
 # 三层指令路由 + 录入确认流程 + Phase调度 + 认知框架查看/更新 + 文件推送
-import json, os, subprocess, threading, time, re, math
+import json, os, sys, subprocess, threading, time, re, math
 from collections import deque
 from datetime import datetime
 from pathlib import Path
+
+# 确保项目根目录在 sys.path 中，使 shared 包可以被找到
+_PROJECT_ROOT = str(Path(__file__).parent.parent)
+if _PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, _PROJECT_ROOT)
 
 import lark_oapi as lark
 from lark_oapi.api.im.v1 import P2ImMessageReceiveV1
