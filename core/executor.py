@@ -22,6 +22,7 @@ def execute_in_runtime(runtime: BotRuntime, ctx: Context) -> Context:
 
         # ── Step 2: 查找 skill handler ──
         handler = runtime.skill_registry.get_handler(ctx.matched_skill)
+        print(f"[executor] 路由结果: matched_skill={ctx.matched_skill}, handler={'✅' if handler else '❌ None'}, confidence={ctx.match_confidence}")
         if handler is None:
             ctx.status = ContextStatus.ERROR
             ctx.reply_text = f"技能 [{ctx.matched_skill}] 未注册"
@@ -45,6 +46,7 @@ def execute_in_runtime(runtime: BotRuntime, ctx: Context) -> Context:
 
         # ── Step 5: 通过 Middleware 管道执行 ──
         ctx = runtime.pipeline.execute(ctx, handler)
+        print(f"[executor] 执行完成: skill={ctx.matched_skill}, status={ctx.status}, reply_len={len(ctx.reply_text) if ctx.reply_text else 0}")
 
         # ── Step 6: 兜底回复 ──
         if not ctx.reply_text and ctx.status == ContextStatus.ERROR:

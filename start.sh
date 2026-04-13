@@ -47,8 +47,13 @@ show_status() {
 
 stop_all() {
     echo "[stop] 停止所有 Agent Hub 进程..."
-    pkill -f "${PYTHON}.*main\.py" 2>/dev/null && echo "  stopped: main.py" || echo "  main.py 未运行"
-    pkill -f "${PYTHON}.*scheduler_runner\.py" 2>/dev/null && echo "  stopped: scheduler_runner.py" || echo "  scheduler_runner.py 未运行"
+    # 先杀子进程（run_single_bot），再杀主进程（main.py）
+    # 顺序很重要：如果先杀 main.py，子进程可能变成孤儿进程
+    pkill -f "${PYTHON}.*run_single_bot\\.py" 2>/dev/null && echo "  stopped: run_single_bot.py (子进程)" || true
+    pkill -f "${PYTHON}.*main\\.py" 2>/dev/null && echo "  stopped: main.py" || echo "  main.py 未运行"
+    pkill -f "${PYTHON}.*scheduler_runner\\.py" 2>/dev/null && echo "  stopped: scheduler_runner.py" || echo "  scheduler_runner.py 未运行"
+    # 等待进程彻底退出
+    sleep 1
     echo "[stop] 完成"
 }
 
