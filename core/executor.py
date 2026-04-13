@@ -10,8 +10,11 @@ def execute_in_runtime(runtime: BotRuntime, ctx: Context) -> Context:
     Channel.on_message → execute_in_runtime → Channel.send_reply
     """
     try:
-        # ── Step 1: 路由 ──
-        ctx = runtime.router.route(ctx)
+        # ── Step 1: 路由（若 Channel 已预设 matched_skill，跳过 Router）──
+        # 预路由规则：Channel 层可在构建 ctx 时设置 matched_skill + status=ROUTED
+        # 以绕过 Router 的触发词匹配（例：文件消息直接指向 ingest_file）
+        if ctx.status != ContextStatus.ROUTED:
+            ctx = runtime.router.route(ctx)
 
         if ctx.status == ContextStatus.ERROR:
             ctx.reply_text = ctx.error_message or "无法识别指令"

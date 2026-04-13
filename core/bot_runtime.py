@@ -22,6 +22,13 @@ class BotConfig:
     max_concurrent: int = 5
     default_timeout: int = 300
     global_hooks: list = field(default_factory=lambda: ['dedup', 'auth', 'timer', 'audit'])
+    # 文件消息类型 → Skill 名称映射（TD-04 修复：配置驱动，不在 Channel 层硬编码）
+    # 在 bot.yaml 中可覆盖；新增文件类型只需改配置，无需动代码
+    file_skill_routes: dict = field(default_factory=lambda: {
+        'file': 'ingest_file',   # .docx / .pdf / .txt 等通用文件
+        'doc':  'ingest_file',   # 飞书在线文档
+    })
+
 
 
 class BotRuntime:

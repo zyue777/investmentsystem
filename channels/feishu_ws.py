@@ -31,27 +31,65 @@ class FeishuWSChannel(ChannelBase):
                 if not msg or not sender:
                     print(f"[feishu] msg={msg} sender={sender}")
                     return
-                if msg.message_type != 'text':
-                    print(f"[feishu] 跳过非文本消息: {msg.message_type}")
-                    return
-                content = json.loads(msg.content or '{}')
-                raw_text = content.get('text', '').strip()
-                if not raw_text:
-                    print(f"[feishu] 空文本")
-                    return
-                open_id = sender.sender_id.open_id if sender.sender_id else ''
-                if not open_id:
-                    print(f"[feishu] 无 open_id")
+                if msg.message_type == 'text':
+                    content = json.loads(msg.content or '{}')
+                    raw_text = content.get('text', '').strip()
+                    if not raw_text:
+                        print(f"[feishu] 空文本")
+                        return
+                    open_id = sender.sender_id.open_id if sender.sender_id else ''
+                    if not open_id:
+                        print(f"[feishu] 无 open_id")
+                        return
+                    print(f"[feishu/{runtime.config.name}] 消息: '{raw_text[:50]}' from {open_id[:15]}...")
+                    ctx = self.build_context(runtime,
+                        request_id=msg.message_id or '', user_id=open_id,
+                        raw_text=raw_text,
+                        metadata={'app_id': self._app_id, 'app_secret': self._app_secret},
+                    )
+                    threading.Thread(target=self._handle, args=(ctx,), daemon=True).start()
+
+                elif msg.message_type in runtime.config.file_skill_routes:
+                    # ── 文件/文档消息 → 配置驱动路由（TD-04 修复）───────────────
+                    # 路由目标由 bot.yaml 的 file_skill_routes 决定，Channel 不硬编码
+                    skill_name = runtime.config.file_skill_routes[msg.message_type]
+                    open_id = sender.sender_id.open_id if sender.sender_id else ''
+                    if not open_id:
+                        print(f"[feishu] 文件消息无 open_id")
+                        return
+                    try:
+                        file_content = json.loads(msg.content or '{}')
+                        file_key  = file_content.get('file_key', '')
+                        file_name = file_content.get('file_name', '未知文件')
+                    except Exception:
+                        file_key, file_name = '', '未知文件'
+
+                    if not file_key:
+                        print(f"[feishu] 文件消息缺少 file_key")
+                        return
+
+                    print(f"[feishu/{runtime.config.name}] 文件: '{file_name}' → {skill_name}")
+                    ctx = self.build_context(runtime,
+                        request_id=msg.message_id or '', user_id=open_id,
+                        raw_text=f'[文件] {file_name}',
+                        metadata={
+                            'app_id': self._app_id, 'app_secret': self._app_secret,
+                            '_file_info': {
+                                'file_key':   file_key,
+                                'file_name':  file_name,
+                                'message_id': msg.message_id or '',
+                            },
+                        },
+                    )
+                    ctx.matched_skill = skill_name   # 由配置决定，非硬编码
+                    from core.context import ContextStatus
+                    ctx.status = ContextStatus.ROUTED
+                    threading.Thread(target=self._handle_direct, args=(ctx,), daemon=True).start()
+
+                else:
+                    print(f"[feishu] 跳过消息类型: {msg.message_type}")
                     return
 
-                print(f"[feishu/{runtime.config.name}] 消息: '{raw_text[:50]}' from {open_id[:15]}...")
-
-                ctx = self.build_context(runtime,
-                    request_id=msg.message_id or '', user_id=open_id,
-                    raw_text=raw_text,
-                    metadata={'app_id': self._app_id, 'app_secret': self._app_secret},
-                )
-                threading.Thread(target=self._handle, args=(ctx,), daemon=True).start()
             except Exception as e:
                 print(f"[feishu/{runtime.config.name}] 异常: {e}")
                 traceback.print_exc()
@@ -73,6 +111,22 @@ class FeishuWSChannel(ChannelBase):
             self.send_reply(ctx)
         except Exception as e:
             print(f"[feishu] _handle 异常: {e}")
+            traceback.print_exc()
+
+    def _handle_direct(self, ctx: Context):
+        """文件消息专用：ctx 已预设 matched_skill，跳过 Router 直接进执行引擎。"""
+        try:
+            from core.executor import execute_in_runtime
+            from core.context import ContextStatus
+            # 先发一条"正在处理"提示（文件处理耗时较长）
+            ctx.reply_text = f"📎 收到文件，正在提取内容并分析，请稍候..."
+            self.send_reply(ctx)
+            ctx.reply_text = ''   # 清空，让 Skill 设置真正的回复
+            ctx.status = ContextStatus.ROUTED   # 确保 executor 不会跳过 Skill 执行
+            ctx = execute_in_runtime(self._runtime, ctx)
+            self.send_reply(ctx)
+        except Exception as e:
+            print(f"[feishu] _handle_direct 异常: {e}")
             traceback.print_exc()
 
     def send_reply(self, ctx: Context):
