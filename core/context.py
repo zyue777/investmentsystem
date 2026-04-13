@@ -1,4 +1,7 @@
-"""统一数据结构定义。"""
+"""统一数据结构定义。
+📝 文档引用：CLAUDE.md「项目结构」/ docs/03_架构知识卡.md「铁律3 单一写入者」
+⚠️ 修改字段会影响所有层。新增字段前请更新 Context docstring 的归属表。
+"""
 from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime

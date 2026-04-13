@@ -1,4 +1,7 @@
-"""BotRuntime — 单个Bot的隔离运行时容器。"""
+"""BotRuntime — 单个Bot的隔离运行时容器。
+📝 文档引用：CLAUDE.md「Skills 共享机制」/ docs/00_架构总览.md
+⚠️ _load_skills() 支持 _shared + Bot 专属两级加载，修改加载顺序会影响覆盖行为。
+"""
 import yaml
 from dataclasses import dataclass, field
 from pathlib import Path

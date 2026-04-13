@@ -1,4 +1,7 @@
-"""统一执行引擎。这是消息处理的核心函数。"""
+"""统一执行引擎。这是消息处理的核心函数。
+📝 文档引用：docs/00_架构总览.md「消息流转路径」
+⚠️ 修改本文件影响所有 Bot 的执行链，修改前必须说明理由。
+"""
 from core.context import Context, ContextStatus
 from core.bot_runtime import BotRuntime
 

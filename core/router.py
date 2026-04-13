@@ -1,4 +1,7 @@
-"""三层路由器：pending-confirm → 精确触发词 → Phase触发词 → AI fallback。"""
+"""四层路由器：pending-confirm → 精确触发词 → Phase触发词 → AI fallback。
+📝 文档引用：CLAUDE.md「消息路由速查」/ docs/00_架构总览.md「消息流转路径」
+⚠️ 修改本文件后，必须同步更新上述两处文档。
+"""
 import re
 from core.context import Context, ContextStatus
 
