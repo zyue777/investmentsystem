@@ -1,120 +1,123 @@
-# investment_system — 飞书投研机器人系统
+# Agent Hub — 多Bot平台
 
-## 系统概览
-
-```
-investment_system/
-├── bot_claude/          # ClaudeBot — 知识库主力（Phase 调度 / 录入确认 / URL 全自动入库）
-├── bot_gemini/          # DeepSeekBot — 快速问答（蒸馏 / 报告生成）
-├── daily_reporter/      # 定时财经报告（apscheduler + 多数据源）
-├── sentiment_monitor/   # 自选股日记（港/美/中概）
-├── shared/              # 公共工具（feishu_utils / memo_handler）
-├── logs/                # 运行日志与 PID（自动生成）
-└── start.sh             # 一键后台启动
-```
-
-知识库路径（两个 bot 共用）：
-```
-~/桌面/投研工作台/
-```
-
----
+> 统一架构管理多个AI Bot，各自独立运行、互不影响。
 
 ## 快速启动
 
 ```bash
-# 激活 conda 环境
+# 1. 激活环境
 conda activate investment_bot
 
-# 后台启动三个服务
-bash ~/investment_system/start.sh
+# 2. 设置环境变量（或写入 start.sh）
+export FEISHU_INVEST_APP_ID=xxx
+export FEISHU_INVEST_APP_SECRET=xxx
+export FEISHU_DS_APP_ID=xxx
+export FEISHU_DS_APP_SECRET=xxx
+export DEEPSEEK_API_KEY=xxx
 
-# 查看日志
-tail -f logs/bot_claude.log
-tail -f logs/bot_gemini.log
-
-# 停止服务
-kill $(cat logs/bot_claude.pid) $(cat logs/bot_gemini.pid) $(cat logs/daily_reporter.pid)
+# 3. 启动
+python main.py
+# 或后台运行
+nohup bash start.sh &
 ```
 
-> `daily_reporter` 使用独立的 `dailyreport` conda 环境（含 tushare / yfinance / akshare）。
+## 架构概览
 
----
+```
+agent_hub/
+├── core/           # 核心引擎（Registry, Router, Executor, Middleware）
+├── channels/       # 消息渠道（feishu_ws, cli）
+├── providers/      # AI模型（claude_cli, deepseek_api）
+├── tools/          # 共享工具（feishu_*, file_*, search_*, wechat_*）
+├── hooks/          # 全局Hook（dedup, auth, timer, audit）
+├── bots/           # Bot 目录（每个子目录 = 一个Bot）
+│   ├── _template/  # 新Bot模板
+│   ├── investment/ # 投研Bot (Claude)
+│   ├── investment_ds/ # 投研Bot (DeepSeek)
+│   └── health/     # 健康Bot（预留，disabled）
+├── config/         # 全局配置
+├── main.py         # 统一入口
+├── run_single_bot.py  # 子进程Bot启动器
+└── start.sh        # 启动脚本
+```
 
-## 两个 Bot 是如何工作和分工的？（通俗版）
+## 5步创建新Bot
 
-整个系统里有两个 Bot 在飞书上为你服务，它们的分工和运行机制非常明确：
+### 第1步：复制模板
+```bash
+cp -r bots/_template bots/my_bot
+```
 
-### 1. ClaudeBot（深度大脑 / 主力知识库管家）
-* **如何传导工作的？** 
-  它是一个你**本地电脑**上的程序。当你在飞书给它发消息时，它接收到指令后，会调动你电脑里的 Claude (CLI) 开始思考。思考完成后，它会**直接在你的本地文件夹**（`~/桌面/投研工作台/`）里创建或修改 Markdown 文件。
-* **日常工作内容是什么？** 
-  - **全自动提取归档**：你只要往里面丢微信文章等网络链接，它会自动抓取网页、套用最好的深度提示词（Phase 7），把口水文压缩成干货情报卡，然后自动存入本地知识库。
-  - **驱动深度投研框架**：支持你运行各种核心的投研指令（如 `p5` 行业高频雷达、 `p2a/p2b` 月报等），它是整个投研工作台的“核心管家”。
+### 第2步：编辑 bot.yaml
+```yaml
+name: my_bot
+label: "我的Bot"
+enabled: true
+channel: feishu_ws
+channel_config:
+  app_id: ${MY_BOT_APP_ID}
+  app_secret: ${MY_BOT_APP_SECRET}
+ai_provider: claude_cli
+workspace: "/path/to/knowledge_base"
+global_hooks: [dedup, auth, timer, audit]
+```
 
-### 2. DeepSeekBot（快问快答助手 / 定时数据播报员）
-* **如何传导工作的？**
-  它同样是一个本地程序，但它**不使用**本地引擎，而是**通过网络去呼叫云端的 DeepSeek 网页接口**。因为它直接调云端 API，没有复杂的本地渲染，所以它的反应速度极快，适合轻量级任务。
-* **日常工作内容是什么？** 
-  - **快速问答和简单处理**：平时有些碎片问题、随便复制一段文字需要立马总结的，可以直接丢给它，回答很快。
-  - **定时推送报告**：系统里自带每日全自动跑的数据脚本（`daily_reporter`），每天会在股市盘前盘后自动抓数据，再借用这个 Bot 以早晨简报、商品异动报、自选股复盘等形式弹送到你的飞书里。
+### 第3步：编写 Skill
+在 `bots/my_bot/skills/` 创建 `.py` 文件：
 
-> **💡 极简总结点拨：**
-> - 做长篇深度研究、发一篇干货链接要长久存入知识库的 👉 必须找 **ClaudeBot**。
-> - 每天看自动发过来的炒股与商品行情日报、随便问个小问题 👉 用 **DeepSeekBot**。
----
+```python
+from core.context import Context, ContextStatus, SkillManifest
 
-## 文件写入规则（重要）
+MANIFEST = SkillManifest(
+    name="greet",
+    description="打招呼",
+    triggers=["你好", "hello"],
+)
 
-所有知识库正式内容写入 `知识库/行业/` 下：
-- ClaudeBot 使用 `Path(kb) / '知识库' / '行业' / path`
-- DeepSeekBot URL feed 自动补全 `知识库/行业/` 前缀
+def handle(ctx: Context) -> Context:
+    ctx.reply_text = f"你好！我是 {ctx.bot_name}"
+    ctx.status = ContextStatus.SUCCESS
+    return ctx
+```
 
-临时/预览文件只允许写入 `_Inbox/`，**禁止在知识库根目录创建 `inbox/`、`draft/` 等临时目录**（见知识库 CLAUDE.md）。
+### 第4步：设置环境变量
+```bash
+export MY_BOT_APP_ID=cli_xxx
+export MY_BOT_APP_SECRET=xxx
+```
 
----
+### 第5步：启动
+```bash
+python main.py
+# 控制台应显示：✅ 我的Bot (my_bot)
+```
 
-## 配置说明
+## CLI 调试模式
 
-三个模块各有 `config.json`，**不入 git**（`.gitignore` 已屏蔽）。  
-首次部署参照各目录的 `config.json.example` 创建：
+不需要飞书即可测试：
 
 ```bash
-cp bot_claude/config.json.example   bot_claude/config.json
-cp bot_gemini/config.json.example   bot_gemini/config.json
-cp daily_reporter/config.json.example daily_reporter/config.json
-# 然后填入真实的 app_id / app_secret / api_key
+python run_single_bot.py my_bot
+# 然后直接输入指令测试
 ```
 
----
+> 注意：CLI 模式需要把 bot.yaml 中的 `channel: feishu_ws` 改为 `channel: cli`
 
-## 知识库目录结构
+## 目录说明
 
-两个 bot 共用同一个外部知识库，**以下目录必须存在**：
+| 目录 | 说明 | 扩展方式 |
+|------|------|----------|
+| `tools/` | 所有Bot共享的工具 | 新建 `.py`，定义 `MANIFEST` + `handle()` |
+| `hooks/` | 全局中间件 | 新建 `.py`，定义 `MANIFEST` + `handle()` |
+| `providers/` | AI模型封装 | 新建 `.py`，继承 `ProviderBase` |
+| `channels/` | 消息渠道 | 新建 `.py`，继承 `ChannelBase` |
+| `bots/xxx/skills/` | Bot私有技能 | 新建 `.py`，定义 `MANIFEST` + `handle()` |
+| `bots/xxx/hooks/` | Bot私有Hook | 同全局Hook |
+| `bots/xxx/prompts/` | Bot私有Prompt | `phases/` 放Phase prompt，`system/` 放系统prompt |
 
-```text
-~/桌面/投研工作台/
-├── 行业筛查/
-│   └── prompts/          # Phase00/01/01.5/03/06/06X prompt 文件
-├── 研究/
-│   ├── prompts/          # Phase02A/02B/2Pre/2Maintain/04/05/07/08/09/10 prompt 文件
-│   ├── 论点卡/           # 行业研究底稿（静态逻辑框架）
-│   └── 周报月报/         # Phase 报告输出
-├── 知识库/
-│   └── 行业/             # 情报卡（平铺，YAML frontmatter含industry字段）
-├── 投资哲学/              # 心法 / 当下关注焦点
-├── 行业状态面板.md        # 动态现状面板（图谱）
-├── _Inbox/               # 临时文件（URL原文 / 长回复溢出 / 初研预览）
-├── 动线/README.md        # 人读速查表（触发词→Phase→文件）
-└── CLAUDE.md             # Claude Code 路由索引（极简，~20行）
-```
+## 设计原则
 
-> **临时文件约定**：任何临时/预览文件只能写入 `_Inbox/`，**禁止**在知识库根目录创建 `inbox/`、`draft/` 等目录。
-
----
-
-## 详细文档
-
-- [ClaudeBot 工作流](bot_claude/README.md)
-- [DeepSeekBot 工作流](bot_gemini/README.md)
-- [工作流检查清单](WORKFLOW_CHECKLIST.md)
+1. **零侵入**：新增Bot/Skill/Hook不需要修改任何现有代码
+2. **可拔插**：删除任何模块，其余部分不受影响
+3. **进程隔离**：多个飞书Bot各自运行在独立进程中（避免 asyncio event loop 冲突）
+4. **审计可追溯**：所有执行记录自动写入 `memory/store/executions.jsonl`

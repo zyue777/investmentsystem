@@ -1,0 +1,14 @@
+# bots/health/bot.yaml
+name: health
+label: "健康管家"
+enabled: false
+description: "健康管理Bot（预留）"
+channel: feishu_ws
+channel_config:
+  app_id: ${FEISHU_HEALTH_APP_ID}
+  app_secret: ${FEISHU_HEALTH_APP_SECRET}
+ai_provider: claude_cli
+workspace: ""
+max_concurrent: 3
+default_timeout: 300
+global_hooks: [dedup, auth, timer, audit]
