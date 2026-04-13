@@ -22,15 +22,22 @@ investment_system/
 ├── channels/       # 渠道适配器（目前只有 feishu_ws）
 ├── providers/      # AI 引擎适配器（claude_cli / deepseek_api）
 ├── hooks/          # 全局横切钩子（dedup / auth / timer / audit）
-├── tools/          # 无状态共享工具（飞书API / 文件IO / 搜索）
-├── bots/           # 各 Bot 业务代码（完全隔离）
+├── tools/          # 无状态共享工具（飞书API / 文件IO / 搜索 / 联网搜索）
+├── bots/           # 各 Bot 业务代码
+│   ├── _shared/           # ⭐ 共享 Skills（所有 Bot 共用，只维护一份）
+│   │   └── skills/        #    12 个 Skill 文件
 │   ├── investment/        # Claude 投研 Bot（主进程）
+│   │   ├── bot.yaml       #    配置（ai_provider / channel / workspace）
+│   │   ├── skills/        #    空目录（如需覆盖共享 Skill，放同名文件到此处）
+│   │   └── prompts/       #    Phase prompt 文件 + registry.yaml
 │   ├── investment_ds/     # DeepSeek 投研 Bot（子进程）
+│   │   ├── bot.yaml
+│   │   ├── skills/        #    空目录
+│   │   └── prompts/
 │   ├── daily_report/      # 每日报告 Bot（独立调度器，不走 BotLoader）
 │   └── health/            # 健康 Bot（占位）
 ├── docs/           # 架构文档（优先阅读 00_架构总览.md）
-├── main.py         # 系统入口（加载 investment Bot）
-├── run_single_bot.py      # 单 Bot 启动（供子进程使用）
+├── main.py         # 系统入口
 └── start.sh        # 统一后台启动脚本
 ```
 
@@ -38,11 +45,15 @@ investment_system/
 
 ---
 
-## ⚠️ Skills 同步规则（必读）
+## ⭐ Skills 共享机制
 
-`bots/investment/skills/` 和 `bots/investment_ds/skills/` 是**内容完全相同的 Copy**（非 symlink）。  
-**修改任意一个 Bot 的 Skill 文件，必须同步修改另一个。**  
-验证方法：`diff bots/investment/skills/<file> bots/investment_ds/skills/<file>`
+`bots/_shared/skills/` 是所有 Bot **共用**的 Skill 目录（只维护一份）。
+
+加载顺序：`_shared/skills/` 先加载 → Bot 专属 `skills/` 后加载（同名覆盖）
+
+- **修改共享 Skill**：直接改 `bots/_shared/skills/<file>.py`，所有 Bot 生效
+- **某个 Bot 需要特殊行为**：在该 Bot 的 `skills/` 下放同名文件，自动覆盖共享版本
+- **新增 Skill**：放入 `_shared/skills/`，重启即生效
 
 ---
 
@@ -52,14 +63,6 @@ investment_system/
 - Python 解释器：`/home/zy/miniconda3/envs/investment_bot/bin/python3`
 - 启动：`bash ~/investment_system/start.sh`
 - 日志：`tail -f logs/investment.log` / `logs/investment_ds.log`
-- 停止：`bash ~/investment_system/start.sh --stop`
-
----
-
-## 配置文件
-
-各 Bot 的 `bot.yaml` 读取环境变量（`${FEISHU_APP_ID}` 等）。  
-敏感 key 通过 shell 环境变量注入，**不写入任何文件，不进 git**。
 
 ---
 
@@ -68,7 +71,7 @@ investment_system/
 两个 Bot 共用外部知识库：`~/桌面/投研工作台/`
 
 - 写入路径：`知识库/行业/` 或 `知识库/个股/`（由 AI 输出的 `FILE_PATH:` 行决定）
-- 临时文件：仅允许写入 `_Inbox/`，**禁止**在知识库根目录创建其他目录
+- 临时文件：仅允许写入 `_Inbox/`
 
 ---
 
@@ -76,8 +79,10 @@ investment_system/
 
 | Bot | 目录 | AI Provider | 职责 |
 |-----|------|-------------|------|
-| investment | `bots/investment/` | claude_cli | Phase 调度、知识库写入、URL/文件/手动录入 |
+| investment | `bots/investment/` | claude_cli | Phase 调度、知识库写入、URL/文件/手动录入、问答 |
 | investment_ds | `bots/investment_ds/` | deepseek_api | 同上（DeepSeek 驱动，独立飞书应用） |
+
+两个 Bot 共用 `_shared/skills/`，功能完全一致，仅 AI 引擎不同。
 
 ---
 
@@ -91,7 +96,9 @@ Router 四层优先级（core/router.py）：
        → 有则直接路由回发起 skill（目前只有 ingest_record 使用此流程）
 
 第1层  Skill 触发词：精确前缀匹配 MANIFEST.triggers
-       例：「录 xxx」→ ingest_record，「kb xxx」→ kb_query
+       例：「录 xxx」→ ingest_record
+           「请联网回答 xxx」→ kb_query
+           「请结合联网与知识库信息回答 xxx」→ kb_query
 
 第2层  Phase 触发词：registry.yaml 里配置的触发词
        例：「日报」→ phase_execute (p1)
@@ -102,8 +109,8 @@ Router 四层优先级（core/router.py）：
 ```
 
 **特殊路由（不走 Router）：**
-- 文件消息（PDF/Word）→ Channel 层直接注入 `matched_skill=ingest_file`，绕过 Router
-- URL（裸链接）→ Router 第0层之前的 URL 检测，路由到 `ingest_url`
+- 文件消息（PDF/Word）→ Channel 层直接注入 `matched_skill=ingest_file`
+- URL（裸链接）→ Router URL 检测，路由到 `ingest_url`
 
 ---
 
@@ -111,7 +118,21 @@ Router 四层优先级（core/router.py）：
 
 | Skill | 流程 | 说明 |
 |-------|------|------|
-| `ingest_file` | 单步直接入库 | 与 ingest_url 一致，无需确认 |
-| `ingest_url` | 单步直接入库 | 抓取→蒸馏→写入→回复 |
+| `ingest_file` | 单步直接入库 | 文件下载→提取→AI蒸馏→写入 |
+| `ingest_url` | 单步直接入库 | URL抓取→蒸馏→写入 |
 | `ingest_record` | 两步确认流程 | 生成预览→用户回复 ok→写入 |
+| `kb_query` | 单步问答 | 支持联网搜索+知识库搜索+反幻觉 |
 | `phase_execute` | 单步或两步 | 由 registry.yaml 的 `needs_confirm` 字段控制 |
+
+---
+
+## kb_query 联网搜索用法
+
+| 用户输入 | 行为 |
+|---------|------|
+| `请联网回答 xxx` | 仅联网搜索后回答 |
+| `请结合联网与知识库信息回答 xxx` | 联网 + 知识库搜索后回答 |
+| `问 xxx` / `析 xxx` / `比 A B` / `总 xxx` | 仅知识库问答 |
+| 其他文字（兜底） | 纯 AI 回答 |
+
+联网信息会在回答末尾标注 `📡 以上部分信息来源于联网搜索`。

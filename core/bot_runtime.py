@@ -57,6 +57,11 @@ class BotRuntime:
         self.router = Router(self.skill_registry, self._phase_configs, self.pending_store)
 
     def _load_skills(self):
+        # 1. 先加载共享 Skills（bots/_shared/skills/）
+        shared = self.bot_dir.parent / '_shared' / 'skills'
+        if shared.exists():
+            self.skill_registry.discover(str(shared), 'bots._shared.skills')
+        # 2. 再加载 Bot 专属 Skills（同名会覆盖共享的，实现差异化）
         d = self.bot_dir / 'skills'
         if d.exists():
             self.skill_registry.discover(str(d), f"bots.{self.config.name}.skills")

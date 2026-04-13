@@ -18,7 +18,27 @@ class ContextStatus(str, Enum):
 
 @dataclass
 class Context:
-    """贯穿所有层的统一对象。"""
+    """贯穿所有层的统一对象。
+
+    字段归属（谁设置 → 谁读取）：
+    ┌──────────────┬──────────────┬──────────────────────────────────┐
+    │ 字段          │ 由谁设置      │ 由谁读取                        │
+    ├──────────────┼──────────────┼──────────────────────────────────┤
+    │ request_id    │ Channel      │ Hook(dedup), Audit              │
+    │ user_id       │ Channel      │ Router, Skill, Hook(auth)       │
+    │ raw_text      │ Channel      │ Router, Skill                   │
+    │ matched_skill │ Router       │ Executor                        │
+    │ parsed_args   │ Router       │ Skill                           │
+    │ workspace     │ BotRuntime   │ Skill                           │
+    │ ai_provider   │ Executor     │ get_ai_provider()               │
+    │ reply_text    │ Skill        │ Channel(发回复)                  │
+    │ status        │ Skill/Router │ Channel(决定是否发回复)           │
+    │ metadata      │ Executor注入 │ Skill(通过 key 访问运行时资源)    │
+    └──────────────┴──────────────┴──────────────────────────────────┘
+
+    ⛔ 不要随意新增字段。新增字段会影响所有层的序列化和日志。
+       如需传递 Skill 专属数据，使用 metadata dict。
+    """
     # ── Channel 层创建 ──
     request_id: str = ""
     bot_name: str = ""
