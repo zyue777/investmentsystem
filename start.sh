@@ -5,8 +5,8 @@
 #   2. scheduler_runner — daily_report 定时报告Bot（DeepSeek驱动）
 #
 # 用法:
-#   bash start.sh           # 启动全部（前台，适合调试）
-#   bash start.sh --daemon  # 后台启动全部（nohup）
+#   bash start.sh           # 前台调试（Ctrl+C 退出）
+#   bash start.sh --daemon  # 后台启动（自动先 kill 旧进程）
 #   bash start.sh --status  # 查看运行状态
 #   bash start.sh --stop    # 停止全部
 
@@ -70,13 +70,8 @@ case "${1:-}" in
         ;;
 esac
 
-# ── 防止重复启动 ──────────────────────────────────────────────────────────────
-EXISTING=$(pid_of "main\.py" || true)
-if [ -n "$EXISTING" ]; then
-    echo "⚠️  main.py 已在运行 (PID $EXISTING)，先执行 bash start.sh --stop 再重启"
-    show_status
-    exit 1
-fi
+# ── 启动前先 kill 旧进程（幂等：无论旧进程是否存在都能正常启动）────────────
+stop_all
 
 # ── 启动 ──────────────────────────────────────────────────────────────────────
 echo "[start.sh] Agent Hub 启动..."

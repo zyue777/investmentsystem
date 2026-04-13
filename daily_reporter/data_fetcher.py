@@ -770,11 +770,41 @@ def fetch_review() -> dict:
 
 def fetch_midday_review() -> dict:
     """
-    午间复盘：A股上午板块涨跌 + 港股指数 + 3条最重大财经新闻。
+    午间复盘（12:30 调用）：
+    - A股大盘指数：akshare 东方财富实时行情（无需 tushare，完全实时）
+    - A股板块涨跌：akshare 实时行业板块
+    - 港股指数：yfinance 实时行情
+    - 财联社午间精选：直接搬运午间新闻精选条目（最可靠的叙事来源）
+    - 财联社快讯：最新6条
     """
     data = {}
 
-    # A股板块（实时，取前3涨/前3跌）
+    # ── A股实时大盘指数（akshare 东方财富，完全实时）────────────────────────
+    try:
+        df_idx = ak.stock_zh_index_spot_em()
+        index_map = {
+            '上证指数': '上证指数',
+            '深证成指': '深证成指',
+            '创业板指': '创业板指',
+            '科创50':   '科创50',
+        }
+        idx_parts = []
+        for label, search in index_map.items():
+            row = df_idx[df_idx['名称'].str.contains(search, na=False)]
+            if not row.empty:
+                r = row.iloc[0]
+                try:
+                    price = round(float(r['最新价']), 2)
+                    pct   = round(float(r['涨跌幅']), 2)
+                    sign  = '+' if pct >= 0 else ''
+                    idx_parts.append(f"{label} {price}（{sign}{pct}%）")
+                except Exception:
+                    pass
+        data['A股大盘'] = '  '.join(idx_parts) if idx_parts else '[数据缺失]'
+    except Exception as e:
+        data['A股大盘'] = '[数据缺失]'
+
+    # ── A股板块涨跌（实时，取前3涨/前3跌，akshare 东方财富）──────────────────
     try:
         df = ak.stock_board_industry_name_em()
         if df is not None and not df.empty:
@@ -794,43 +824,77 @@ def fetch_midday_review() -> dict:
         data['A股领涨板块'] = '[数据缺失]'
         data['A股领跌板块'] = '[数据缺失]'
 
-    # 港股指数（tushare index_global）
-    for code, name in [('HSI', '恒生指数'), ('HKTECH', '恒生科技')]:
-        try:
-            end_d   = datetime.now().strftime('%Y%m%d')
-            start_d = (datetime.now() - timedelta(days=5)).strftime('%Y%m%d')
-            df_hk   = _pro.index_global(ts_code=code, start_date=start_d, end_date=end_d)
-            if df_hk is not None and not df_hk.empty:
-                row  = df_hk.iloc[0]
-                pct  = round(float(row['pct_chg']), 2)
-                cls  = round(float(row['close']), 2)
-                sign = '+' if pct >= 0 else ''
-                data[name] = f"{cls}  {sign}{pct}%"
-            else:
-                data[name] = '[数据缺失]'
-        except Exception:
-            data[name] = '[数据缺失]'
-
-    # 午间重大财经新闻（Investing.com，过去12小时）
-    data['重大财经新闻'] = _fetch_investing_news(n=5, hours_back=12)
-
-    # 财联社快讯（最新6条，供补充）
+    # ── 港股指数（HSI: yfinance；恒生科技: akshare 东方财富港股实时）──────────
     try:
-        df = ak.stock_info_global_cls()
-        if not df.empty:
+        import yfinance as yf
+        hsi = yf.Ticker('^HSI')
+        fi  = hsi.fast_info
+        price = round(float(fi.last_price), 2)
+        prev  = round(float(fi.previous_close), 2)
+        pct   = round((price / prev - 1) * 100, 2) if prev else 0
+        sign  = '+' if pct >= 0 else ''
+        data['恒生指数'] = f"{price}  {sign}{pct}%"
+    except Exception:
+        data['恒生指数'] = '[数据缺失]'
+
+    # 恒生科技：akshare 港股实时，代码 HSTECH（东方财富）
+    try:
+        df_hk = ak.stock_hk_index_spot_em()
+        hs_tech = df_hk[df_hk['名称'].str.contains('恒生科技|HSTECH', na=False)]
+        if not hs_tech.empty:
+            r     = hs_tech.iloc[0]
+            price = round(float(r['最新价']), 2)
+            pct   = round(float(r['涨跌幅']), 2)
+            sign  = '+' if pct >= 0 else ''
+            data['恒生科技'] = f"{price}  {sign}{pct}%"
+        else:
+            data['恒生科技'] = '[数据缺失]'
+    except Exception:
+        data['恒生科技'] = '[数据缺失]'
+
+    # ── 财联社午间精选（最可靠的午间叙事来源，直接搬运）──────────────────────
+    # 财联社每天 12:00 - 12:10 发布"午间新闻精选"，包含准确的大盘数字和重大事项
+    try:
+        df_cls = ak.stock_info_global_cls()
+        if not df_cls.empty:
+            # 优先寻找"午间新闻精选"条目
+            midday_kws = ['午间新闻精选', '午间', '午盘', '午市']
+            midday_item = None
+            for kw in midday_kws:
+                hits = df_cls[df_cls['内容'].str.contains(kw, na=False) |
+                              df_cls['标题'].str.contains(kw, na=False)]
+                if not hits.empty:
+                    midday_item = hits.iloc[0]
+                    break
+
+            if midday_item is not None:
+                content = str(midday_item.get('内容', '') or midday_item.get('标题', ''))
+                # 截取前 600 字（财联社精选通常 300-500 字）
+                data['财联社午间精选'] = content[:600]
+            else:
+                data['财联社午间精选'] = '[午间精选暂未发布，请稍后]'
+
+            # 额外：最新6条快讯
             lines = []
-            for _, row in df.head(6).iterrows():
+            for _, row in df_cls.head(8).iterrows():
                 t     = str(row.get('发布时间', ''))[:5]
                 title = str(row.get('标题', '') or row.get('内容', ''))[:80]
-                lines.append(f"[{t}] {title}")
-            data['财联社快讯'] = '\n'.join(lines)
+                if title and title not in (data.get('财联社午间精选', '')):
+                    lines.append(f"[{t}] {title}")
+                if len(lines) >= 5:
+                    break
+            data['财联社快讯'] = '\n'.join(lines) if lines else '[数据缺失]'
         else:
+            data['财联社午间精选'] = '[数据缺失]'
             data['财联社快讯'] = '[数据缺失]'
-    except Exception:
+    except Exception as e:
+        data['财联社午间精选'] = '[数据缺失]'
         data['财联社快讯'] = '[数据缺失]'
 
     data['生成时间'] = datetime.now().strftime('%Y-%m-%d %H:%M')
     return data
+
+
 
 
 # ── 6. 周末汇总 数据（周日 19:00 调用）────────────────────────────────────────

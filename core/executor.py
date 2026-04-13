@@ -26,10 +26,13 @@ def execute_in_runtime(runtime: BotRuntime, ctx: Context) -> Context:
 
         # ── Step 3: 注入运行时依赖到 metadata ──
         # skill 通过 ctx.metadata 访问 runtime 提供的共享资源
+        # 原则：Skill 不应直接访问 runtime 的内部属性（_xxx）
         ctx.metadata['_runtime'] = runtime
         ctx.metadata['_pending_store'] = runtime.pending_store
         ctx.metadata['_dialog_history'] = runtime.dialog_history
         ctx.metadata['_dialog_mode'] = runtime.dialog_mode
+        ctx.metadata['_phase_configs'] = runtime._phase_configs  # 供 Skill 读取 Phase 配置
+
 
         # ── Step 4: 解析 AI Provider ──
         skill_item = runtime.skill_registry.get(ctx.matched_skill)
