@@ -144,7 +144,7 @@ def job_watchlist():
 
 
 def job_morning_reports():
-    """09:00（周一~周六）— 晨报·股票版 + 晨报·大宗商品版。"""
+    """08:10（周一~周六）— 晨报·股票版 + 晨报·大宗商品版。"""
     log.info("生成晨报...")
     try:
         stock_data     = _morning_cache.get('stock')     or fetch_morning_stock()
@@ -159,7 +159,7 @@ def job_morning_reports():
 
 
 def job_midday_review():
-    """12:30（周一~周五）— 午间复盘。"""
+    """12:45（周一~周五）— 午间复盘。"""
     log.info("生成午间复盘...")
     try:
         data   = fetch_midday_review()
@@ -205,19 +205,19 @@ if __name__ == '__main__':
         sys.exit(1)
 
     log.info("每日报告Bot 启动（新架构 scheduler_runner）")
-    log.info("周一~周五：08:25抓取 / 08:30自选股 / 09:00晨报 / 12:30午间复盘 / 16:30收盘复盘")
-    log.info("周六：08:25抓取 / 08:30自选股 / 09:00晨报")
+    log.info("周一~周五：08:05抓取 / 08:10晨报 / 08:25自选股数据 / 08:30自选股日报 / 12:45午间复盘 / 16:30收盘复盘")
+    log.info("周六：08:05抓取 / 08:10晨报 / 08:25自选股数据 / 08:30自选股日报")
     log.info("周日：19:00周末汇总")
 
     scheduler = BlockingScheduler(timezone='Asia/Shanghai')
 
     tz = 'Asia/Shanghai'
     # 周一~周六
-    scheduler.add_job(job_fetch_morning,   CronTrigger(day_of_week='mon-sat', hour=8,  minute=25, timezone=tz))
-    scheduler.add_job(job_watchlist,       CronTrigger(day_of_week='mon-sat', hour=8,  minute=30, timezone=tz))
-    scheduler.add_job(job_morning_reports, CronTrigger(day_of_week='mon-sat', hour=9,  minute=0,  timezone=tz))
+    scheduler.add_job(job_fetch_morning,   CronTrigger(day_of_week='mon-sat', hour=8,  minute=5,  timezone=tz))
+    scheduler.add_job(job_watchlist,       CronTrigger(day_of_week='mon-sat', hour=8,  minute=25, timezone=tz))
+    scheduler.add_job(job_morning_reports, CronTrigger(day_of_week='mon-sat', hour=8,  minute=10, timezone=tz))
     # 周一~周五
-    scheduler.add_job(job_midday_review,   CronTrigger(day_of_week='mon-fri', hour=12, minute=30, timezone=tz))
+    scheduler.add_job(job_midday_review,   CronTrigger(day_of_week='mon-fri', hour=12, minute=45, timezone=tz))
     scheduler.add_job(job_review,          CronTrigger(day_of_week='mon-fri', hour=16, minute=30, timezone=tz))
     # 周日
     scheduler.add_job(job_weekend_summary, CronTrigger(day_of_week='sun',     hour=19, minute=0,  timezone=tz))

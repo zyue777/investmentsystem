@@ -108,10 +108,31 @@ bash start.sh --daemon   # 重启生效，无需修改其他文件
 
 ---
 
+## 🔄 开机自启（已配置）
+
+电脑开机后 **自动启动所有服务**，无需手动操作。
+
+原理：`crontab @reboot` → 等待 30 秒（网络就绪）→ 执行 `bash start.sh --daemon`
+
+```bash
+# 查看当前自启配置
+crontab -l
+
+# 关闭开机自启（编辑后删掉那一行即可）
+crontab -e
+
+# 重新开启
+(crontab -l 2>/dev/null; echo "@reboot sleep 30 && cd /home/zy/investment_system && /bin/bash start.sh --daemon >> /home/zy/investment_system/logs/boot.log 2>&1") | crontab -
+```
+
+启动日志：`logs/boot.log`
+
+---
+
 ## 环境要求
 
 - Python 3.10+（conda 环境 `investment_bot`）
-- 依赖：`akshare tushare yfinance lark-oapi apscheduler openai`
+- 依赖：`akshare tushare yfinance lark-oapi apscheduler openai python-docx pdfplumber`
 - 环境变量：在 `start.sh` 中统一配置
 
 ---
