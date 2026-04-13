@@ -8,6 +8,7 @@
   文件下载 → 文本提取 → AI 分类(P7/P11) → AI 处理 → 直接写入 → 回复结果
 """
 import os
+import re
 from datetime import datetime
 from pathlib import Path
 from core.context import Context, ContextStatus, SkillManifest
@@ -82,7 +83,7 @@ def _handle_file(ctx: Context, file_info: dict) -> Context:
         return ctx
 
     # AI 分类（P7 研报蒸馏 / P11 公司情报）
-    phase_choice = _classify_intent(text_content, provider, ws)
+    phase_choice = _classify_intent(text_content, provider, ws, runtime)
     phase_label = '研报蒸馏（P7）' if phase_choice == 'p7' else '公司交流情报卡（P11）'
 
     # 加载 Phase prompt
@@ -132,15 +133,21 @@ def _handle_file(ctx: Context, file_info: dict) -> Context:
     return ctx
 
 
-def _classify_intent(content: str, provider, ws: str) -> str:
-    prompt_file = Path(__file__).parent.parent / 'prompts' / 'system' / 'classify_intent.md'
-    if prompt_file.exists():
-        system_prompt = prompt_file.read_text(encoding='utf-8')
-    else:
+def _classify_intent(content: str, provider, ws: str, runtime=None) -> str:
+    """分类文件内容为 P7(研报蒸馏) 或 P11(公司情报)。
+    路径解析优先级：runtime.bot_dir > fallback prompt。
+    """
+    system_prompt = ''
+    # 从当前 bot 的 prompts 目录加载（而非写死 _shared 的相对路径）
+    if runtime and hasattr(runtime, 'bot_dir'):
+        prompt_file = runtime.bot_dir / 'prompts' / 'system' / 'classify_intent.md'
+        if prompt_file.exists():
+            system_prompt = prompt_file.read_text(encoding='utf-8')
+    if not system_prompt:
         system_prompt = (
             "判断这份文字的类型，只输出 p7 或 p11，不要有其他内容。\n"
-            "p11：公司业绩说明会、投资者交流会、管理层访谈、路演纪要 → 输出 p11\n"
-            "p7：研究报告、行业分析、券商研报、宏观策略报告 → 输出 p7\n"
+            "p11：公司业绩说明会、投资者交流会、管理层访谈、路演纪要等【客观公司业绩交流汇报】 → 输出 p11\n"
+            "p7：研究报告、行业分析、券商研报、宏观策略报告、专家电话会纪要等【主观研判/外部观点】 → 输出 p7\n"
             "不确定时默认 p7"
         )
     prompt = NO_WRITE + system_prompt + f"\n\n待分类内容前段：\n{content[:2000]}"
@@ -173,9 +180,32 @@ def _parse_output(raw: str, today: str, source_name: str) -> tuple:
         stem = Path(source_name).stem if source_name else '未命名'
         file_path = f"{today}_{stem}.md"
         content = raw
-    # 规范路径前缀
-    for prefix in ['知识库/行业/', '知识库/个股/']:
-        file_path = file_path.replace(prefix, '')
+    # ── 路径净化（防御 AI 输出格式污染） ──
+    file_path = _sanitize_path(file_path, today, source_name)
+    return file_path, content
+
+
+def _sanitize_path(file_path: str, today: str, source_name: str) -> str:
+    """清理 AI 输出的文件路径，防止路径腐化。
+    防御场景：反引号包裹、_Inbox/前缀、.pdf后缀、..路径逃逸、引号包裹。
+    """
+    # 1. 去除反引号、引号等格式字符
+    file_path = file_path.strip('`\'\"')
+    # 2. 去除已知的错误前缀（AI 从 prompt 上下文中误抄的路径）
+    for prefix in ['知识库/行业/', '知识库/个股/', '知识库/',
+                   '_Inbox/_Processed_Archive/', '_Inbox/', 'Inbox/']:
+        if file_path.startswith(prefix):
+            file_path = file_path[len(prefix):]
+    # 3. 防止路径逃逸
+    file_path = file_path.replace('..', '').lstrip('/')
+    # 4. 强制 .md 后缀（AI 有时保留原始 .pdf 后缀）
+    if not file_path.endswith('.md'):
+        file_path = re.sub(r'\.(pdf|docx?|txt)$', '.md', file_path, flags=re.IGNORECASE)
+        if not file_path.endswith('.md'):
+            file_path += '.md'
+    # 5. 归入正确的子目录
     if not file_path.startswith(('行业/', '个股/')):
         file_path = '行业/' + file_path
-    return file_path, content
+    # 6. 最终安全检查：路径中不应包含特殊字符
+    file_path = file_path.replace('`', '').replace('"', '').replace("'", '')
+    return file_path

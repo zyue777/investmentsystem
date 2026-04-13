@@ -161,6 +161,7 @@ Router 四层优先级（core/router.py）：
 | 修改目录结构 | CLAUDE.md + docs/00 |
 | 修改定时任务 | docs/02_运维与债务.md |
 | 新增技术债务 | docs/02_运维与债务.md |
+| 修改 Phase prompt（投喂/录入相关）| 同步到 investment_ds 版本 |
 
 > 如果不确定是否需要更新文档，默认更新 CLAUDE.md。
 
@@ -173,6 +174,9 @@ Router 四层优先级（core/router.py）：
 - 新增功能 = 新增文件，不改旧代码
 - 能在代码层控制的事不在 Prompt 层控制
 - 能单步完成的流程不用两步
+- **Shared Skill 访问 Bot 级资源（prompt/config）必须通过 `runtime.bot_dir`，禁止 `Path(__file__)` 硬编码**
+- **AI 输出进入文件系统前，必须经过 `_sanitize_path()` 净化（AI 是不可信输入源）**
+- **Prompt 中的文件系统操作指令，必须区分 CLI 模式和管道模式**
 
 ### 行为偏好
 - **不要执行任何 git 命令**
