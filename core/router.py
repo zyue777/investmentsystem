@@ -1,16 +1,38 @@
-"""三层路由器：精确触发词 → Phase触发词 → AI fallback。"""
+"""三层路由器：pending-confirm → 精确触发词 → Phase触发词 → AI fallback。"""
 import re
 from core.context import Context, ContextStatus
 
+# ok/确认/改.../cancel 都属于流程控制指令，由 pending_store 判断归属
+_CONFIRM_RE = re.compile(r'^(ok|确认|cancel|取消|改\s+.+)$', re.IGNORECASE)
+# 有 pending 记录时，这些 skill 拥有 confirm 处理权（ingest_file 已改为直接入库，无需在此注册）
+_PENDING_SKILLS = ['ingest_record']
+
 
 class Router:
-    def __init__(self, skill_registry, phase_configs: dict):
+    def __init__(self, skill_registry, phase_configs: dict, pending_store=None):
         self._skill_reg = skill_registry
         self._phase_configs = phase_configs
+        self._pending_store = pending_store  # 用于 pending-confirm 优先路由
         self._url_re = re.compile(r'https?://\S+')
 
     def route(self, ctx: Context) -> Context:
         text = ctx.raw_text.strip()
+
+        # ── 第0层：pending-confirm 优先路由 ─────────────────────────────────
+        # 当用户发送 ok/确认/改.../cancel 且 pending_store 有记录时，
+        # 直接路由回拥有 pending 的 skill，避免进入 AI fallback 产生幻觉。
+        if _CONFIRM_RE.match(text) and self._pending_store:
+            pending = self._pending_store.get(ctx.user_id)
+            if pending:
+                # pending 里存有发起 skill 名称（由各 skill 写入时设置），直接路由回去
+                skill_name = pending.get('_skill', '')
+                if not skill_name:
+                    # 兜底：遍历已知 pending skill
+                    skill_name = _PENDING_SKILLS[0]
+                ctx.matched_skill = skill_name
+                ctx.match_confidence = 1.0
+                ctx.status = ContextStatus.ROUTED
+                return ctx
 
         # URL 投喂检测
         url_m = self._url_re.search(text)

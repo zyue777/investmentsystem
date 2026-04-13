@@ -88,9 +88,6 @@ def handle(ctx: Context) -> Context:
     except ValueError:
         rel = full_path
 
-    from tools.file_write import git_commit
-    git_commit(str(full_path), ws, f"url_ingest: {full_path.name}")
-
     card_preview = content if len(content) <= REPLY_MAX_LEN else content[:REPLY_MAX_LEN] + "\n\n…（内容过长）"
     ctx.reply_text = f"✅ 已入库: {rel}\n📎 原文: {title}\n\n📋 情报卡内容：\n\n{card_preview}"
     ctx.output_path = str(full_path)

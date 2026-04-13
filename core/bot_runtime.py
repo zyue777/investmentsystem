@@ -54,7 +54,7 @@ class BotRuntime:
         self._load_skills()
         self._load_hooks(global_hook_registry)
         self._load_phase_configs()
-        self.router = Router(self.skill_registry, self._phase_configs)
+        self.router = Router(self.skill_registry, self._phase_configs, self.pending_store)
 
     def _load_skills(self):
         d = self.bot_dir / 'skills'

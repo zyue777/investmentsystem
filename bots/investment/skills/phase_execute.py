@@ -119,8 +119,6 @@ def handle(ctx: Context) -> Context:
         try:
             full_path.parent.mkdir(parents=True, exist_ok=True)
             full_path.write_text(content, encoding='utf-8')
-            from tools.file_write import git_commit
-            git_commit(str(full_path), ws, f"phase_{phase_key}: {full_path.name}")
             ctx.reply_text = f"✅ {label} 已完成\n📁 {file_path}"
             ctx.output_path = str(full_path)
         except Exception as e:

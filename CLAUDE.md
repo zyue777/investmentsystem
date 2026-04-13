@@ -1,65 +1,117 @@
-# investment_system — Claude Code 开发规范
+# investment_system — Agent 开发规范
 
-## Git 规范
-
-不要执行任何 git 命令，包括 commit、push、add、status。
+> ⚠️ **此文件是 Claude Code / 其他 agent 读取项目的第一入口，必须保持与实际代码同步。**
 
 ---
 
-## 项目结构
+## Git 规范
+
+不要执行任何 git 命令，包括 commit、push、add、status。用户手动管理 git。
+
+---
+
+## 项目结构（当前架构：Agent Hub）
 
 ```
 investment_system/
-├── bot_claude/       # ClaudeBot — 飞书长连接，驱动 claude CLI，写知识库
-├── bot_gemini/       # DeepSeekBot — 飞书长连接，调 DeepSeek API，快问答 + 日报推送
-├── daily_reporter/   # 定时财经报告（apscheduler）
-│   ├── data_fetcher.py   # 数据抓取（yfinance / akshare / tushare）
-│   ├── report_builder.py # DeepSeek 生成报告文本
-│   └── scheduler.py      # 定时任务入口
-├── sentiment_monitor/ # 自选股情绪日记
-├── shared/            # 公共工具（feishu_utils / memo_handler）
-├── logs/              # 运行日志与 PID（自动生成，不入 git）
-└── start.sh           # 一键后台启动
+├── core/           # 框架核心（路由/执行/注册/中间件）——轻易不动
+│                   # ⛔ 高风险文件（修改前必须说明理由）：
+│                   #    context.py — 所有层的数据契约，改字段会级联崩溃
+│                   #    executor.py — 所有 Bot 的执行链，改错影响全局
+│                   #    feishu_ws.py (channels/) — 所有消息入口，改错全部失联
+├── channels/       # 渠道适配器（目前只有 feishu_ws）
+├── providers/      # AI 引擎适配器（claude_cli / deepseek_api）
+├── hooks/          # 全局横切钩子（dedup / auth / timer / audit）
+├── tools/          # 无状态共享工具（飞书API / 文件IO / 搜索）
+├── bots/           # 各 Bot 业务代码（完全隔离）
+│   ├── investment/        # Claude 投研 Bot（主进程）
+│   ├── investment_ds/     # DeepSeek 投研 Bot（子进程）
+│   ├── daily_report/      # 每日报告 Bot（独立调度器，不走 BotLoader）
+│   └── health/            # 健康 Bot（占位）
+├── docs/           # 架构文档（优先阅读 00_架构总览.md）
+├── main.py         # 系统入口（加载 investment Bot）
+├── run_single_bot.py      # 单 Bot 启动（供子进程使用）
+└── start.sh        # 统一后台启动脚本
 ```
+
+> **已废弃目录**（保留历史，不要修改）：`bot_claude/`  `bot_gemini/`  `archive/`
+
+---
+
+## ⚠️ Skills 同步规则（必读）
+
+`bots/investment/skills/` 和 `bots/investment_ds/skills/` 是**内容完全相同的 Copy**（非 symlink）。  
+**修改任意一个 Bot 的 Skill 文件，必须同步修改另一个。**  
+验证方法：`diff bots/investment/skills/<file> bots/investment_ds/skills/<file>`
 
 ---
 
 ## 运行环境
 
-- conda 环境：`investment_bot`（Python 解释器：`/home/zy/miniconda3/envs/investment_bot/bin/python3`）
+- conda 环境：`investment_bot`
+- Python 解释器：`/home/zy/miniconda3/envs/investment_bot/bin/python3`
 - 启动：`bash ~/investment_system/start.sh`
-- 日志：`tail -f logs/bot_claude.log` / `logs/bot_gemini.log`
-- 停止：`kill $(cat logs/bot_claude.pid) $(cat logs/bot_gemini.pid) $(cat logs/daily_reporter.pid)`
+- 日志：`tail -f logs/investment.log` / `logs/investment_ds.log`
+- 停止：`bash ~/investment_system/start.sh --stop`
 
 ---
 
 ## 配置文件
 
-三个模块各有 `config.json`，**不入 git**（`.gitignore` 已屏蔽）。  
-参照同目录 `config.json.example` 创建，填入真实的 `app_id` / `app_secret` / `api_key`。
+各 Bot 的 `bot.yaml` 读取环境变量（`${FEISHU_APP_ID}` 等）。  
+敏感 key 通过 shell 环境变量注入，**不写入任何文件，不进 git**。
 
 ---
 
 ## 知识库路径
 
-两个 bot 共用外部知识库：`~/桌面/投研工作台/`
+两个 Bot 共用外部知识库：`~/桌面/投研工作台/`
 
-- ClaudeBot 写入：`知识库/行业/` 或 `知识库/个股/`（由 Claude 输出的 `FILE_PATH:` 行决定）
-- DeepSeekBot 写入：`04_Private_Knowledge/` 前缀路径
-- 临时文件只允许写入 `_Inbox/`，**禁止**在知识库根目录创建 `inbox/`、`draft/` 等目录
-
----
-
-## 两个 Bot 的核心分工
-
-| Bot | 底层 | 职责 |
-|-----|------|------|
-| bot_claude | `claude --print --dangerously-skip-permissions` | Phase 调度、录入确认、URL 全自动入库、知识库搜索 |
-| bot_gemini | DeepSeek API (`deepseek-chat`) | 快速问答、URL 蒸馏确认入库、定时日报推送 |
+- 写入路径：`知识库/行业/` 或 `知识库/个股/`（由 AI 输出的 `FILE_PATH:` 行决定）
+- 临时文件：仅允许写入 `_Inbox/`，**禁止**在知识库根目录创建其他目录
 
 ---
 
-## 数据原则
+## 两个投研 Bot 的核心分工
 
-- **所有数字由 `data_fetcher.py` 抓取**，DeepSeek/Claude 不生成任何价格/涨跌幅
-- 数据源：yfinance（美股/港股/大宗商品）、akshare（A股/财联社新闻）、tushare（A股指数/北向资金）
+| Bot | 目录 | AI Provider | 职责 |
+|-----|------|-------------|------|
+| investment | `bots/investment/` | claude_cli | Phase 调度、知识库写入、URL/文件/手动录入 |
+| investment_ds | `bots/investment_ds/` | deepseek_api | 同上（DeepSeek 驱动，独立飞书应用） |
+
+---
+
+## 消息路由速查（定位路由 Bug 必读）
+
+```
+Router 四层优先级（core/router.py）：
+
+第0层  pending-confirm：用户说 ok/确认/改.../cancel
+       → 检查 pending_store 是否有该用户的待确认记录
+       → 有则直接路由回发起 skill（目前只有 ingest_record 使用此流程）
+
+第1层  Skill 触发词：精确前缀匹配 MANIFEST.triggers
+       例：「录 xxx」→ ingest_record，「kb xxx」→ kb_query
+
+第2层  Phase 触发词：registry.yaml 里配置的触发词
+       例：「日报」→ phase_execute (p1)
+
+第3层  AI fallback：消耗 token，让 AI 判断意图
+
+兜底   kb_query（通用问答）
+```
+
+**特殊路由（不走 Router）：**
+- 文件消息（PDF/Word）→ Channel 层直接注入 `matched_skill=ingest_file`，绕过 Router
+- URL（裸链接）→ Router 第0层之前的 URL 检测，路由到 `ingest_url`
+
+---
+
+## Skill 流程类型说明
+
+| Skill | 流程 | 说明 |
+|-------|------|------|
+| `ingest_file` | 单步直接入库 | 与 ingest_url 一致，无需确认 |
+| `ingest_url` | 单步直接入库 | 抓取→蒸馏→写入→回复 |
+| `ingest_record` | 两步确认流程 | 生成预览→用户回复 ok→写入 |
+| `phase_execute` | 单步或两步 | 由 registry.yaml 的 `needs_confirm` 字段控制 |

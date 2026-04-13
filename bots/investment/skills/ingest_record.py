@@ -76,6 +76,7 @@ def _handle_record(ctx: Context, content: str, pending_store) -> Context:
         pending_store.set(ctx.user_id, {
             'path': file_path, 'content': card_content,
             'original': content, 'kb': ws, 'type': 'new',
+            '_skill': 'ingest_record',
         })
 
     preview = (f"📋 预览（回复 ok 确认写入）\n"
@@ -123,10 +124,6 @@ def _handle_confirm(ctx: Context, pending_store) -> Context:
         rel = full_path.relative_to(ws)
     except ValueError:
         rel = full_path
-
-    # git commit
-    from tools.file_write import git_commit
-    git_commit(str(full_path), ws, f"ingest: {full_path.name}")
 
     ctx.reply_text = f"✅ 已入库\n📁 {rel}"
     ctx.output_path = str(full_path)

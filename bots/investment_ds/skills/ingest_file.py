@@ -1,53 +1,43 @@
 """文件录入 — 接收 Word/PDF 文件，自动提取文本，分类为 P7(蒸馏) 或 P11(公司情报)，
-预览后用户确认写入知识库。
+直接写入知识库并回复结果（无需用户二次确认，与 ingest_url 动线一致）。
 
 触发方式：
   - 用户直接发送 Word/PDF 文件到飞书（Channel 自动识别并注入 _file_info）
-  - 发 "文件录入" + 文件（配合 Channel 扩展）
 
 流程：
-  文件下载 → 文本提取 → AI 分类(P7/P11) → AI 处理 → 预览 → ok 确认写入
+  文件下载 → 文本提取 → AI 分类(P7/P11) → AI 处理 → 直接写入 → 回复结果
 """
 import os
-import tempfile
 from datetime import datetime
 from pathlib import Path
 from core.context import Context, ContextStatus, SkillManifest
 
 MANIFEST = SkillManifest(
     name="ingest_file",
-    description="文件录入（Word/PDF自动识别并分类为蒸馏P7或公司情报P11）",
+    description="文件录入（Word/PDF自动识别并分类为蒸馏P7或公司情报P11，直接入库）",
     triggers=[],        # 无文字触发词，由 Channel 在检测到文件消息时直接注入 matched_skill
-    version="1.0.0",
+    version="2.0.0",
     tags=["录入", "文件", "AI"],
     priority=15,
 )
 
 NO_WRITE = "⚠️ 重要：本次执行请勿直接写入或创建任何文件。只在 stdout 输出内容。\n\n"
+REPLY_MAX_LEN = 2800
 
 
 def handle(ctx: Context) -> Context:
     """入口：文件元信息在 ctx.metadata['_file_info'] 中。"""
     file_info = ctx.metadata.get('_file_info')
-    pending_store = ctx.metadata.get('_pending_store')
 
-    # ── ok/确认 → 写入（复用 ingest_record 的确认流程）──────────────────────
-    text = ctx.raw_text.strip()
-    if text.lower() in ('ok', '确认'):
-        return _handle_confirm(ctx, pending_store)
-    if text.startswith('改 '):
-        return _handle_modify(ctx, text[2:].strip(), pending_store)
-
-    # ── 处理文件 ──────────────────────────────────────────────────────────────
     if not file_info:
         ctx.reply_text = "⚠️ 请直接发送 Word 或 PDF 文件"
         ctx.status = ContextStatus.ERROR
         return ctx
 
-    return _handle_file(ctx, file_info, pending_store)
+    return _handle_file(ctx, file_info)
 
 
-def _handle_file(ctx: Context, file_info: dict, pending_store) -> Context:
+def _handle_file(ctx: Context, file_info: dict) -> Context:
     from core.executor import get_ai_provider
     from tools.feishu_token import get_token
     from tools.feishu_file_download import download_file, extract_text_from_file
@@ -114,98 +104,31 @@ def _handle_file(ctx: Context, file_info: dict, pending_store) -> Context:
 
     today = datetime.now().strftime('%Y-%m-%d')
     file_path, card_content = _parse_output(raw, today, file_name)
+    full_path = Path(ws) / '知识库' / file_path
 
-    if pending_store:
-        pending_store.set(ctx.user_id, {
-            'path': file_path, 'content': card_content,
-            'original': text_content, 'kb': ws, 'type': 'new',
-        })
-
-    preview = (f"📎 文件：{file_name}\n"
-               f"🏷️ 自动识别：{phase_label}\n"
-               f"📁 将存入：知识库/{file_path}\n"
-               f"{'─' * 32}\n"
-               f"{card_content[:2400]}\n"
-               f"{'─' * 32}\n"
-               f"回复 ok 确认写入 | 改 [意见] 修改 | /cancel 取消")
-    ctx.reply_text = preview
-    ctx.status = ContextStatus.PENDING
-    return ctx
-
-
-
-def _handle_confirm(ctx: Context, pending_store) -> Context:
-    if not pending_store:
-        ctx.reply_text = "⚠️ 没有待确认的内容"
-        ctx.status = ContextStatus.SUCCESS
-        return ctx
-    pending = pending_store.pop(ctx.user_id)
-    if not pending:
-        ctx.reply_text = "⚠️ 没有待确认的内容"
-        ctx.status = ContextStatus.SUCCESS
-        return ctx
-
-    ws = pending['kb']
-    full_path = Path(ws) / '知识库' / pending['path']
+    # 直接写入（与 ingest_url 一致，无需二次确认）
     try:
         full_path.parent.mkdir(parents=True, exist_ok=True)
-        full_path.write_text(pending['content'], encoding='utf-8')
+        full_path.write_text(card_content, encoding='utf-8')
     except Exception as e:
         ctx.reply_text = f"❌ 写入失败：{e}"
         ctx.status = ContextStatus.ERROR
         return ctx
 
-    from tools.file_write import git_commit
-    git_commit(str(full_path), ws, f"file_ingest: {full_path.name}")
     try:
         rel = full_path.relative_to(ws)
     except ValueError:
         rel = full_path
-    ctx.reply_text = f"✅ 已入库\n📁 {rel}"
+
+    card_preview = (card_content if len(card_content) <= REPLY_MAX_LEN
+                    else card_content[:REPLY_MAX_LEN] + "\n\n…（内容过长）")
+    ctx.reply_text = (f"✅ 已入库\n"
+                      f"📎 文件：{file_name}\n"
+                      f"🏷️ 类型：{phase_label}\n"
+                      f"📁 {rel}\n\n"
+                      f"📋 情报卡内容：\n\n{card_preview}")
     ctx.output_path = str(full_path)
     ctx.status = ContextStatus.SUCCESS
-    return ctx
-
-
-def _handle_modify(ctx: Context, modification: str, pending_store) -> Context:
-    from core.executor import get_ai_provider
-    if not pending_store:
-        ctx.reply_text = "⚠️ 没有待修改的内容"
-        ctx.status = ContextStatus.SUCCESS
-        return ctx
-    pending = pending_store.get(ctx.user_id)
-    if not pending:
-        ctx.reply_text = "⚠️ 没有待修改的内容"
-        ctx.status = ContextStatus.SUCCESS
-        return ctx
-
-    provider = get_ai_provider(ctx)
-    if not provider:
-        ctx.reply_text = "❌ AI模型不可用"
-        ctx.status = ContextStatus.ERROR
-        return ctx
-
-    prompt = (NO_WRITE +
-              f"以下是上一次生成的情报卡：\n{pending['content']}\n\n"
-              f"用户修改意见：{modification}\n\n"
-              f"请按照修改意见重新输出完整情报卡，第一行保持 FILE_PATH: 格式。")
-
-    raw = provider.call_with_retry(prompt, timeout=120, cwd=ctx.workspace)
-    if raw.startswith('❌') or raw.startswith('⏸️'):
-        ctx.reply_text = raw
-        ctx.status = ContextStatus.ERROR
-        return ctx
-
-    today = datetime.now().strftime('%Y-%m-%d')
-    file_path, card_content = _parse_output(raw, today, '')
-    pending_store.set(ctx.user_id, {
-        'path': file_path, 'content': card_content,
-        'original': pending.get('original', ''), 'kb': pending.get('kb', ctx.workspace), 'type': 'new',
-    })
-    ctx.reply_text = (f"📋 修改后预览\n📁 知识库/{file_path}\n"
-                      f"{'─' * 32}\n{card_content[:2400]}\n{'─' * 32}\n"
-                      f"回复 ok 确认 | 改 [意见] 继续修改")
-    ctx.status = ContextStatus.PENDING
     return ctx
 
 
@@ -247,7 +170,6 @@ def _parse_output(raw: str, today: str, source_name: str) -> tuple:
         content_start += 1
     content = '\n'.join(lines[content_start:]) if content_start < len(lines) else raw
     if not file_path:
-        # 用文件名作为兜底
         stem = Path(source_name).stem if source_name else '未命名'
         file_path = f"{today}_{stem}.md"
         content = raw

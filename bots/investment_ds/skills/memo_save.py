@@ -38,10 +38,6 @@ def handle(ctx: Context) -> Context:
     with open(full_path, 'a', encoding='utf-8') as f:
         f.write(entry)
 
-    # git commit
-    from tools.file_write import git_commit
-    git_hash = git_commit(str(full_path), ws, f"memo: {today} {time_str}")
-
-    ctx.reply_text = f"📝 已记录\n📁 {rel_path}\n📌 git: {git_hash}"
+    ctx.reply_text = f"📝 已记录\n📁 {rel_path}"
     ctx.status = ContextStatus.SUCCESS
     return ctx
