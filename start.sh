@@ -20,7 +20,24 @@ echo "[start.sh] Python: $PYTHON"
 # 确保 logs 目录存在
 mkdir -p "$LOGS_DIR"
 
+# ── 停止旧实例（防止重复启动导致双发报告）────────────────────────────────────
+stop_service() {
+    local pid_file="$1"
+    local name="$2"
+    if [ -f "$pid_file" ]; then
+        local old_pid
+        old_pid=$(cat "$pid_file")
+        if kill -0 "$old_pid" 2>/dev/null; then
+            echo "[start.sh] 停止旧 $name (PID=$old_pid)..."
+            kill "$old_pid"
+            sleep 1
+        fi
+        rm -f "$pid_file"
+    fi
+}
+
 # ── 启动 bot_claude（长连接模式，无需端口）────────────────────────────────────
+stop_service "$LOGS_DIR/bot_claude.pid" "bot_claude"
 echo "[start.sh] 启动 bot_claude ..."
 nohup bash -c "cd '$SCRIPT_DIR' && '$PYTHON' bot_claude/bot.py" \
     > "$LOGS_DIR/bot_claude.log" 2>&1 &
@@ -29,6 +46,7 @@ echo "$BOT_CLAUDE_PID" > "$LOGS_DIR/bot_claude.pid"
 echo "[start.sh] bot_claude 已启动，PID=$BOT_CLAUDE_PID，日志: $LOGS_DIR/bot_claude.log"
 
 # ── 启动 bot_gemini（端口 5001）──────────────────────────────────────────────
+stop_service "$LOGS_DIR/bot_gemini.pid" "bot_gemini"
 echo "[start.sh] 启动 bot_gemini ..."
 nohup bash -c "cd '$SCRIPT_DIR' && '$PYTHON' bot_gemini/bot.py" \
     > "$LOGS_DIR/bot_gemini.log" 2>&1 &
@@ -37,6 +55,7 @@ echo "$BOT_GEMINI_PID" > "$LOGS_DIR/bot_gemini.pid"
 echo "[start.sh] bot_gemini 已启动，PID=$BOT_GEMINI_PID，日志: $LOGS_DIR/bot_gemini.log"
 
 # ── 启动每日报告调度器（使用 dailyreport 环境，含 tushare/yfinance/akshare）──
+stop_service "$LOGS_DIR/daily_reporter.pid" "daily_reporter"
 echo "[start.sh] 启动 daily_reporter 调度器 ..."
 CONDA_DAILYREPORT="$CONDA_BASE/envs/dailyreport/bin/python"
 nohup "$CONDA_DAILYREPORT" "$SCRIPT_DIR/daily_reporter/scheduler.py" \
