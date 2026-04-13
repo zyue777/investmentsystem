@@ -1,0 +1,8 @@
+# Agent Hub 全局配置
+# 此文件定义全局默认值，各 Bot 的 bot.yaml 可覆盖
+
+default_provider: claude_cli
+default_timeout: 300
+
+# 日志级别
+log_level: INFO

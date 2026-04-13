@@ -1,0 +1,77 @@
+# bots/investment/prompts/registry.yaml
+# Phase 配置注册表 — 所有 Phase 的唯一定义处
+# 新增Phase = 加一条 + 对应prompt文件
+
+phases:
+  p7:
+    key: "p7"
+    label: "Phase07 蒸馏"
+    prompt_file: "phases/phase07_distill.md"
+    triggers: ["蒸馏", "处理纪要"]
+    timeout: 300
+    output_dir: "知识库/行业"
+    needs_confirm: false
+    accepts_inline: true
+
+  p5:
+    key: "p5"
+    label: "Phase05 周报"
+    prompt_file: "phases/phase05_weekly_radar.md"
+    triggers: ["周报", "雷达", "跑周报"]
+    timeout: 600
+    output_dir: "研究/周报月报/周度雷达"
+    needs_confirm: true
+
+  p2a:
+    key: "p2a"
+    label: "Phase02A 月报（成长周期型）"
+    prompt_file: "phases/phase02a_monthly_growth.md"
+    triggers: ["月报A", "月报a"]
+    timeout: 600
+    output_dir: "研究/周报月报"
+    needs_confirm: true
+
+  p2b:
+    key: "p2b"
+    label: "Phase02B 月报（刚需供需型）"
+    prompt_file: "phases/phase02b_monthly_supply.md"
+    triggers: ["月报B", "月报b"]
+    timeout: 600
+    output_dir: "研究/周报月报"
+    needs_confirm: true
+
+  p4:
+    key: "p4"
+    label: "Phase04 滚动更新"
+    prompt_file: "phases/phase04_rolling_update.md"
+    triggers: ["滚动更新", "差异化更新"]
+    timeout: 600
+    output_dir: "研究/周报月报"
+    needs_confirm: true
+
+  p10:
+    key: "p10"
+    label: "Phase10 备忘提炼"
+    prompt_file: "phases/phase10_memo_digest.md"
+    triggers: ["提炼备忘", "消化memo"]
+    timeout: 300
+    output_dir: "投资哲学/碎片备忘/_Weekly_Digest"
+    needs_confirm: true
+
+  p11:
+    key: "p11"
+    label: "Phase11 公司交流"
+    prompt_file: "phases/phase11_company_notes.md"
+    triggers: ["交流", "p11"]
+    timeout: 600
+    output_dir: "知识库/个股"
+    needs_confirm: true
+
+  p2pre:
+    key: "p2pre"
+    label: "初研"
+    prompt_file: "phases/phase2pre_initial_research.md"
+    triggers: ["初研"]
+    timeout: 600
+    output_dir: "研究/论点卡"
+    needs_confirm: true

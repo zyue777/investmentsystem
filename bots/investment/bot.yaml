@@ -1,0 +1,14 @@
+# bots/investment/bot.yaml
+name: investment
+label: "投研Bot"
+enabled: true
+description: "AI投研助手：情报蒸馏、知识库管理、Phase调度"
+channel: feishu_ws
+channel_config:
+  app_id: ${FEISHU_INVEST_APP_ID}
+  app_secret: ${FEISHU_INVEST_APP_SECRET}
+ai_provider: claude_cli
+workspace: "/home/zy/桌面/投研工作台"
+max_concurrent: 5
+default_timeout: 300
+global_hooks: [dedup, auth, timer, audit]

@@ -1,0 +1,14 @@
+# bots/_template/bot.yaml
+name: my_bot
+label: "我的Bot"
+enabled: false
+description: ""
+channel: feishu_ws
+channel_config:
+  app_id: ${FEISHU_MYBOT_APP_ID}
+  app_secret: ${FEISHU_MYBOT_APP_SECRET}
+ai_provider: claude_cli
+workspace: ""
+max_concurrent: 3
+default_timeout: 300
+global_hooks: [dedup, auth, timer, audit]

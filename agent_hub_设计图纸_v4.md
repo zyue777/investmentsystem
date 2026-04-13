@@ -925,6 +925,13 @@ class BotRuntime:
 
 ### 5.7 `core/bot_loader.py`
 
+> [!IMPORTANT]
+> **施工勘误（v4.1）**：原设计用 `threading.Thread` 启动多个飞书 WebSocket Channel，
+> 但 `lark_oapi.ws.Client.start()` 内部使用 `asyncio.get_event_loop().run_until_complete()`，
+> 多个线程共用同一个 event loop 会导致 `RuntimeError: This event loop is already running`。
+> **修正方案**：第1个Bot在主进程内线程启动，第2个及后续Bot各自使用独立子进程（`subprocess.Popen`）。
+> 新增 `run_single_bot.py` 作为子进程入口。
+
 ```python
 """Bot 发现、加载、启动。"""
 import os, re, yaml, threading
@@ -1009,6 +1016,8 @@ def main():
     for b in bots:
         print(f"  ✅ {b.config.label} ({b.config.name})")
     print(f"{'='*50}\n")
+    # 启动所有Channel（主Bot在当前进程，其余走子进程）
+    loader.start_channels(bots)
     try:
         threading.Event().wait()
     except KeyboardInterrupt:
@@ -1016,6 +1025,30 @@ def main():
 
 if __name__ == '__main__':
     main()
+```
+
+### 5.9 `run_single_bot.py`（v4.1 新增）
+
+> 子进程入口，由 BotLoader 自动调用，每个Bot独占一个进程和 asyncio event loop。
+
+```python
+"""单Bot独立进程启动器。"""
+import sys, threading
+from pathlib import Path
+from core.bot_loader import BotLoader
+from core.bot_runtime import BotRuntime
+
+def run_bot(bot_name: str):
+    root = Path(__file__).parent
+    loader = BotLoader(root)
+    config = loader._load_config(root / 'bots' / bot_name / 'bot.yaml')
+    runtime = BotRuntime(config, root / 'bots' / bot_name,
+        loader.global_tools, loader.global_hooks, loader.global_providers)
+    loader._start_channel_inprocess(runtime)
+    threading.Event().wait()
+
+if __name__ == '__main__':
+    run_bot(sys.argv[1])
 ```
 
 ---
