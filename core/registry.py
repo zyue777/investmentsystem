@@ -46,7 +46,12 @@ class Registry:
         for name, item in self._items.items():
             for trigger in getattr(item['manifest'], 'triggers', []):
                 tl = trigger.lower()
-                if text_lower == tl or text_lower.startswith(tl + ' ') or text_lower.startswith(tl + '\n'):
+                # 匹配条件：文本完全等于或以触发词开头
+                # 触发词自带格式约定：
+                #   - 末尾带空格的（如 "录 "）→ startswith("录 ") 天然需要空格分隔
+                #   - 末尾无空格的（如 "请联网研究"）→ startswith 直接前缀匹配
+                #   - 完整词的（如 "s", "kk"）→ == 精确匹配
+                if text_lower == tl or text_lower.startswith(tl):
                     matches.append({'name': name, 'manifest': item['manifest'],
                                     'handler': item['handler'], 'trigger': trigger})
                     break

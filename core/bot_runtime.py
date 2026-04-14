@@ -31,6 +31,8 @@ class BotConfig:
         'file': 'ingest_file',   # .docx / .pdf / .txt 等通用文件
         'doc':  'ingest_file',   # 飞书在线文档
     })
+    # 启动时发送指令菜单的用户 open_id 列表（为空则不发）
+    startup_notify_users: list = field(default_factory=list)
 
 
 

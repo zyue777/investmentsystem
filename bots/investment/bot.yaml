@@ -18,3 +18,5 @@ file_skill_routes:
   doc:  ingest_file    # 飞书在线文档
   # image: ingest_image   # 未来：图片识别 Skill（取消注释即启用）
   # audio: ingest_audio   # 未来：语音转写 Skill（取消注释即启用）
+startup_notify_users:
+  - "ou_2525697c11679de48ab0d976267c0652"

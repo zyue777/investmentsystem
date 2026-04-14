@@ -1,4 +1,4 @@
-"""四层路由器：pending-confirm → 精确触发词 → Phase触发词 → AI fallback。
+"""五层路由器：pending-confirm → Session拦截 → 精确触发词 → Phase触发词 → AI fallback。
 📝 文档引用：CLAUDE.md「消息路由速查」/ docs/00_架构总览.md「消息流转路径」
 ⚠️ 修改本文件后，必须同步更新上述两处文档。
 """
@@ -37,6 +37,26 @@ class Router:
                 ctx.status = ContextStatus.ROUTED
                 return ctx
 
+        # ── 第0.5层：Session 模式拦截 ──────────────────────────────────────
+        # 如果用户有活跃 Session（研究模式等），所有消息路由到 session 对应的 skill。
+        # 退出指令（归档/clear/jj）也路由到同一 skill，由它内部处理退出流程。
+        # 注意：「研究 xxx」开启指令会穿过此层（无 session 时不拦截），
+        #       由下方第1层 Skill 触发词匹配到 research_session。
+        try:
+            from tools.session_memory import get_active_session
+            session = get_active_session(ctx.user_id)
+            if session:
+                ctx.matched_skill = session['target_skill']
+                ctx.parsed_args = {
+                    'session_action': 'continue',
+                    'topic': session.get('topic', ''),
+                }
+                ctx.match_confidence = 1.0
+                ctx.status = ContextStatus.ROUTED
+                return ctx
+        except ImportError:
+            pass  # session_memory 模块不存在时降级（可拔插）
+
         # URL 投喂检测
         url_m = self._url_re.search(text)
         if url_m and text.strip() == url_m.group(0):
@@ -69,6 +89,16 @@ class Router:
                     ctx.match_confidence = 1.0
                     ctx.status = ContextStatus.ROUTED
                     return ctx
+
+        # 第2.5层：长文本会议纪要自动检测
+        # 用户直接粘贴会议纪要/调研记录时，无需手动加"录 "前缀，自动路由到 ingest_record
+        _NOTE_KEYWORDS = {'会议纪要', '纪要', '调研', '专家会议', '草根调研', '路演', '会议要点', '电话会', '专家电话'}
+        if len(text) > 300 and any(kw in text for kw in _NOTE_KEYWORDS):
+            ctx.matched_skill = 'ingest_record'
+            ctx.parsed_args = {'content': text}
+            ctx.match_confidence = 0.9
+            ctx.status = ContextStatus.ROUTED
+            return ctx
 
         # 第3层：AI fallback（消耗 token）
         ai_result = self._ai_match(text, ctx)

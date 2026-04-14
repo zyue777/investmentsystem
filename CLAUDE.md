@@ -22,10 +22,10 @@ investment_system/
 ├── channels/       # 渠道适配器（目前只有 feishu_ws）
 ├── providers/      # AI 引擎适配器（claude_cli / deepseek_api）
 ├── hooks/          # 全局横切钩子（dedup / auth / timer / audit）
-├── tools/          # 无状态共享工具（飞书API / 文件IO / 搜索 / 联网搜索）
+├── tools/          # 无状态共享工具（飞书API / 文件IO / 搜索 / 联网搜索 / 会话记忆）
 ├── bots/           # 各 Bot 业务代码
 │   ├── _shared/           # ⭐ 共享 Skills（所有 Bot 共用，只维护一份）
-│   │   └── skills/        #    12 个 Skill 文件
+│   │   └── skills/        #    13 个 Skill 文件（含 research_session）
 │   ├── investment/        # Claude 投研 Bot（主进程）
 │   │   ├── bot.yaml       #    配置（ai_provider / channel / workspace）
 │   │   ├── skills/        #    空目录（如需覆盖共享 Skill，放同名文件到此处）
@@ -89,16 +89,21 @@ investment_system/
 ## 消息路由速查（定位路由 Bug 必读）
 
 ```
-Router 四层优先级（core/router.py）：
+Router 五层优先级（core/router.py）：
 
 第0层  pending-confirm：用户说 ok/确认/改.../cancel
        → 检查 pending_store 是否有该用户的待确认记录
        → 有则直接路由回发起 skill（目前只有 ingest_record 使用此流程）
 
+第0.5层  Session 模式拦截：检查 session_memory 是否有活跃 Session
+       → 有则路由到 session 的 target_skill（如 research_session）
+       → 归档/clear/jj 等退出指令也路由到同一 skill，由它内部处理
+       → 可拔插：session_memory 不存在时自动降级跳过
+
 第1层  Skill 触发词：精确前缀匹配 MANIFEST.triggers
        例：「录 xxx」→ ingest_record
+           「研究 xxx」→ research_session
            「请联网回答 xxx」→ kb_query
-           「请结合联网与知识库信息回答 xxx」→ kb_query
 
 第2层  Phase 触发词：registry.yaml 里配置的触发词
        例：「日报」→ phase_execute (p1)
@@ -122,7 +127,23 @@ Router 四层优先级（core/router.py）：
 | `ingest_url` | 单步直接入库 | URL抓取→蒸馏→写入 |
 | `ingest_record` | 两步确认流程 | 生成预览→用户回复 ok→写入 |
 | `kb_query` | 单步问答 | 支持联网搜索+知识库搜索+反幻觉 |
+| `research_session` | 多轮会话+归档 | 研究→多轮联网/KB对话→归档为情报卡 |
 | `phase_execute` | 单步或两步 | 由 registry.yaml 的 `needs_confirm` 字段控制 |
+
+---
+
+## research_session 研究模式用法
+
+| 用户输入 | 行为 |
+|---------|------|
+| `研究 xxx` | 开启研究模式，创建 Session |
+| 研究模式中：`请联网 xxx` | 联网搜索 + 历史上下文 → AI 回答 |
+| 研究模式中：`结合知识库 xxx` | 知识库检索 + 历史上下文 → AI 回答 |
+| 研究模式中：其他文字 | 仅历史上下文 → AI 纯推理 |
+| `归档` | AI 整理为情报卡 → 写入知识库 → 清空 Session |
+| `clear` / `jj` | 清空 Session，不保存 |
+
+存储：`tools/session_memory.py`（JSON 文件持久化，24h 自动过期）
 
 ---
 

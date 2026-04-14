@@ -97,6 +97,10 @@ class FeishuWSChannel(ChannelBase):
         handler = (lark.EventDispatcherHandler.builder("", "")
             .register_p2_im_message_receive_v1(on_message).build())
         print(f"[feishu/{runtime.config.name}] 连接飞书...")
+
+        # 启动时发送指令菜单给管理员（零 Token，静态消息）
+        self._send_startup_menu(runtime)
+
         # 每个线程创建独立的 event loop，避免多Bot共用同一 loop 冲突
         import asyncio
         loop = asyncio.new_event_loop()
@@ -144,6 +148,42 @@ class FeishuWSChannel(ChannelBase):
         except Exception as e:
             print(f"[feishu] send_reply 异常: {e}")
             traceback.print_exc()
+
+    def _send_startup_menu(self, runtime):
+        """启动时发送指令菜单（静态消息，零 Token）。"""
+        notify_users = getattr(runtime.config, 'startup_notify_users', None)
+        if not notify_users:
+            return
+        try:
+            from tools.feishu_token import get_token
+            from tools.feishu_message import send_text
+            token = get_token(self._app_id, self._app_secret)
+            if not token:
+                print(f"[feishu] 启动菜单: token获取失败")
+                return
+
+            bot_label = runtime.config.label or runtime.config.name
+            menu = (
+                f"🤖 {bot_label} 已上线\n"
+                f"━━━━━━━━━━━━━━━━━\n"
+                f"📋 指令速查：\n"
+                f"• 研究 [主题] → 进入研究模式\n"
+                f"• 请联网研究 [主题] → 联网研究模式\n"
+                f"  ┗ 归档 → 保存为情报卡\n"
+                f"  ┗ clear → 清空退出\n"
+                f"• 录 [内容] → 录入情报\n"
+                f"• 问/析/比 → 知识库问答\n"
+                f"• 请联网回答 [问题] → 联网问答\n"
+                f"• 发送URL → 自动抓取入库\n"
+                f"• 发送文件 → 自动蒸馏入库\n"
+                f"• s → 系统状态"
+            )
+
+            for uid in notify_users:
+                send_text(token, uid, menu)
+            print(f"[feishu/{runtime.config.name}] 启动菜单已发送 → {len(notify_users)} 人")
+        except Exception as e:
+            print(f"[feishu] 启动菜单发送失败: {e}")
 
 def create_channel():
     return FeishuWSChannel()

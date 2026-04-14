@@ -34,7 +34,7 @@ tail -f logs/main.log    # 查看实时日志
               ↓
          Hooks（去重→鉴权→计时）
               ↓
-         Router（触发词→Phase→AI兜底）
+         Router（Session拦截→触发词→Phase→AI兜底）
               ↓
          Skill.handle(ctx)
               ↓
@@ -78,14 +78,11 @@ investment_system/
 
 | 文档 | 说明 |
 |------|------|
-| [docs/00_架构总览](docs/00_架构总览.md) | 五层架构、消息流转、进程模型 |
-| [docs/01_Skill开发与进化手册](docs/01_Skill开发与进化手册.md) | 新增/修改/禁用/删除 Skill |
-| [docs/02_Hook开发手册](docs/02_Hook开发手册.md) | 中间件开发、四个执行阶段 |
-| [docs/03_模块扩展手册](docs/03_模块扩展手册.md) | 新增 Channel/Provider/Tool/Bot/Phase |
-| [docs/04_架构审查报告](docs/04_架构审查报告.md) | 已知问题、修复记录、设计决策 |
-| [docs/05_架构设计原则_通用知识卡](docs/05_架构设计原则_通用知识卡.md) | 通用架构原则（适用其他项目）|
-| [docs/06_运维手册](docs/06_运维手册.md) | 启动/停止/日志/定时任务/Bot指令速查 |
-| [docs/07_技术债务说明](docs/07_技术债务说明.md) | 3个已知技术债：触发条件+优化方案 |
+| [CLAUDE.md](CLAUDE.md) | Agent 入口文档（路由速查、Skill表、触发器） |
+| [docs/00_架构总览](docs/00_架构总览.md) | 五层架构、消息流转、进程模型、已知问题 |
+| [docs/01_开发手册](docs/01_开发手册.md) | Skill/Hook/Channel/Provider/Tool/Phase 开发规范 |
+| [docs/02_运维与债务](docs/02_运维与债务.md) | 启动运维、定时任务、功能速查、技术债务 |
+| [docs/03_架构知识卡](docs/03_架构知识卡.md) | 可复用的架构设计原则与铁律 |
 
 ---
 
