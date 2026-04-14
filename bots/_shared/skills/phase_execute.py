@@ -54,10 +54,6 @@ def handle(ctx: Context) -> Context:
 
     # 构建完整 prompt
     full_prompt = NO_WRITE + prompt_text
-    if phase_key == 'p2a':
-        full_prompt += "\n\n⚠️ 本次仅处理 A类（成长周期型）行业。"
-    elif phase_key == 'p2b':
-        full_prompt += "\n\n⚠️ 本次仅处理 B类（刚需供需型）行业。"
     if extra:
         full_prompt += f"\n\n请处理以下用户直接发送的原始内容：\n{extra}"
 

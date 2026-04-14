@@ -25,7 +25,7 @@ investment_system/
 ├── tools/          # 无状态共享工具（飞书API / 文件IO / 搜索 / 联网搜索 / 会话记忆）
 ├── bots/           # 各 Bot 业务代码
 │   ├── _shared/           # ⭐ 共享 Skills（所有 Bot 共用，只维护一份）
-│   │   └── skills/        #    13 个 Skill 文件（含 research_session）
+│   │   └── skills/        #    12 个 Skill 文件（含 research_session）
 │   ├── investment/        # Claude 投研 Bot（主进程）
 │   │   ├── bot.yaml       #    配置（ai_provider / channel / workspace）
 │   │   ├── skills/        #    空目录（如需覆盖共享 Skill，放同名文件到此处）
@@ -93,7 +93,7 @@ Router 五层优先级（core/router.py）：
 
 第0层  pending-confirm：用户说 ok/确认/改.../cancel
        → 检查 pending_store 是否有该用户的待确认记录
-       → 有则直接路由回发起 skill（目前只有 ingest_record 使用此流程）
+       → 有则直接路由回发起 skill（ingest_record 和 phase_execute 均使用此流程）
 
 第0.5层  Session 模式拦截：检查 session_memory 是否有活跃 Session
        → 有则路由到 session 的 target_skill（如 research_session）
@@ -106,7 +106,9 @@ Router 五层优先级（core/router.py）：
            「请联网回答 xxx」→ kb_query
 
 第2层  Phase 触发词：registry.yaml 里配置的触发词
-       例：「日报」→ phase_execute (p1)
+       例：「蒸馏 xxx」→ phase_execute (p7)
+           「跑周报」→ phase_execute (p5)
+           「初研 xxx」→ phase_execute (p2pre)
 
 第3层  AI fallback：消耗 token，让 AI 判断意图
 
@@ -129,6 +131,27 @@ Router 五层优先级（core/router.py）：
 | `kb_query` | 单步问答 | 支持联网搜索+知识库搜索+反幻觉 |
 | `research_session` | 多轮会话+归档 | 研究→多轮联网/KB对话→归档为情报卡 |
 | `phase_execute` | 单步或两步 | 由 registry.yaml 的 `needs_confirm` 字段控制 |
+
+---
+
+## Phase 注册表速查
+
+> 两个 Bot 各自维护独立的 `prompts/registry.yaml`。DS Bot 已对齐新投研体系。
+
+**investment_ds（DeepSeek版）当前 Phase 列表：**
+
+| Phase | 触发词 | 需确认 | 输出路径 |
+|-------|--------|--------|----------|
+| p7 蒸馏 | `蒸馏` `处理纪要` | ❌ 直接写入 | 知识库/行业 |
+| p11 公司交流 | `交流` `p11` | ✅ | 知识库/个股 |
+| p5 周报 | `周报` `雷达` `跑周报` | ✅ | 研究/周报月报/周度雷达 |
+| p4 滚动更新 | `滚动更新` `差异化更新` | ✅ | 研究/周报月报 |
+| p10 备忘提炼 | `提炼备忘` `消化memo` | ✅ | 投资哲学/碎片备忘/_Weekly_Digest |
+| p2pre 初研 | `初研` | ✅ | 研究/论点卡 |
+| p2maintain 底稿维护 | `更新底稿` `检查底稿` | ✅ | 研究/论点卡 |
+| p8 精选个股 | `挑标的` `精选个股` | ✅ | 研究/自选股 |
+
+> ⚠️ **investment（Claude版）** 仍保留旧的 p2a/p2b，未对齐新体系。日常使用以 DS Bot 为主。
 
 ---
 
@@ -182,7 +205,7 @@ Router 五层优先级（core/router.py）：
 | 修改目录结构 | CLAUDE.md + docs/00 |
 | 修改定时任务 | docs/02_运维与债务.md |
 | 新增技术债务 | docs/02_运维与债务.md |
-| 修改 Phase prompt（投喂/录入相关）| 同步到 investment_ds 版本 |
+| 修改 Phase prompt 或 registry.yaml | 评估是否需同步到另一个 Bot 的 prompts/ |
 
 > 如果不确定是否需要更新文档，默认更新 CLAUDE.md。
 

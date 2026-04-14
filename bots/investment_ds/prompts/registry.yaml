@@ -22,24 +22,6 @@ phases:
     output_dir: "研究/周报月报/周度雷达"
     needs_confirm: true
 
-  p2a:
-    key: "p2a"
-    label: "Phase02A 月报（成长周期型）"
-    prompt_file: "phases/phase02a_monthly_growth.md"
-    triggers: ["月报A", "月报a"]
-    timeout: 600
-    output_dir: "研究/周报月报"
-    needs_confirm: true
-
-  p2b:
-    key: "p2b"
-    label: "Phase02B 月报（刚需供需型）"
-    prompt_file: "phases/phase02b_monthly_supply.md"
-    triggers: ["月报B", "月报b"]
-    timeout: 600
-    output_dir: "研究/周报月报"
-    needs_confirm: true
-
   p4:
     key: "p4"
     label: "Phase04 滚动更新"
@@ -74,4 +56,22 @@ phases:
     triggers: ["初研"]
     timeout: 600
     output_dir: "研究/论点卡"
+    needs_confirm: true
+
+  p2maintain:
+    key: "p2maintain"
+    label: "底稿维护"
+    prompt_file: "phases/phase2maintain_draft_update.md"
+    triggers: ["更新底稿", "检查底稿"]
+    timeout: 600
+    output_dir: "研究/论点卡"
+    needs_confirm: true
+
+  p8:
+    key: "p8"
+    label: "Phase08 精选个股"
+    prompt_file: "phases/phase08_stock_pool.md"
+    triggers: ["挑标的", "精选个股"]
+    timeout: 300
+    output_dir: "研究/自选股"
     needs_confirm: true
