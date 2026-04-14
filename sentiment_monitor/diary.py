@@ -42,15 +42,30 @@ def today_written(ticker: str) -> bool:
         return f'## {today}' in f.read()
 
 
+_EMPTY_ANN = {'[无重大公告]', '无', '暂无', '无重大公告', 'N/A', 'n/a', ''}
+_EMPTY_SENT = {'暂无', '暂无。', '无', '无。', 'N/A', 'n/a', ''}
+
+
+def _is_empty(text: str, empty_set: set) -> bool:
+    """判断内容是否为空/占位符"""
+    return text.strip() in empty_set
+
+
 def write_entry(ticker: str, name: str, ann_text: str, sentiment_text: str) -> bool:
     """
     写入今日日记条目（幂等：今日已存在则跳过）。
-    返回 True=写入成功，False=已存在跳过。
+    返回 True=写入成功，False=已存在跳过 或 双空条目跳过。
+
+    规则：重大公告和社区讨论均为空/占位符时，不写入（避免积累无价值日志）。
     """
     path = _month_path(ticker)
     today = datetime.now().strftime('%Y-%m-%d')
 
     os.makedirs(os.path.dirname(path), exist_ok=True)
+
+    # 双空跳过：两个字段都无实质内容，不写入
+    if _is_empty(ann_text, _EMPTY_ANN) and _is_empty(sentiment_text, _EMPTY_SENT):
+        return False
 
     # 幂等检查
     if os.path.exists(path):
