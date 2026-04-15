@@ -122,7 +122,28 @@ crontab -e
 (crontab -l 2>/dev/null; echo "@reboot sleep 30 && cd /home/zy/investment_system && /bin/bash start.sh --daemon >> /home/zy/investment_system/logs/boot.log 2>&1") | crontab -
 ```
 
+
 启动日志：`logs/boot.log`
+
+---
+
+## 🧹 缓存清理 & 定时维护
+
+系统内置了 `clean.sh` 工具，用于清理 Python 字节码缓存、残留进程 ID 及历史冗余数据。
+
+### 手动执行
+```bash
+bash clean.sh              # 默认安全清理（__pycache__ + PID）
+bash clean.sh --all        # 深度清理（含日志及 executions.jsonl 历史）
+bash clean.sh --dry-run    # 预览模式（不实际删除）
+```
+
+### 定时任务（已配置）
+为保证服务器空间与系统响应速度，系统已配置 **每周五 10:00** 自动执行默认清理。
+
+- **原理**：`crontab` 定时驱动
+- **任务核查**：`crontab -l`
+- **维护日志**：`logs/clean.log`
 
 ---
 

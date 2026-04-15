@@ -44,6 +44,7 @@ def handle(ctx: Context) -> Context:
 
     raw_content = result['content']
     title = result.get('title', '未命名')
+    article_date = result.get('date', datetime.now().strftime('%Y-%m-%d'))
 
     # 智能路由
     phase_choice = _classify_intent(raw_content, provider, ws)
@@ -58,11 +59,15 @@ def handle(ctx: Context) -> Context:
         if prompt_file.exists():
             p_prompt = prompt_file.read_text(encoding='utf-8')
 
-    # 构建 prompt
+    # 构建 prompt（将文章元数据传入，避免 AI 猜错日期）
     prompt = (NO_WRITE +
               (f"{p_prompt}\n\n" if p_prompt else "") +
               f"请将以下原始文章依照上面要求的结构进行处理。\n"
               f"第一行输出必须严格遵循指定的 FILE_PATH: 格式落盘，后续空行接内容。\n\n"
+              f"⚠️ 文章元数据（以此为准，不可忽略）：\n"
+              f"  原标题: {title}\n"
+              f"  发布日期: {article_date}\n"
+              f"  原文链接: {url}\n\n"
               f"原文：\n{raw_content[:20000]}")
 
     raw = provider.call_with_retry(prompt, timeout=600, cwd=ws)

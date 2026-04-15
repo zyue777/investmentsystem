@@ -170,29 +170,24 @@ echo ""
 # ── 3. 执行历史 (executions.jsonl) ───────────────────────────────────────────
 echo -e "${CYAN}[3/5] 调度执行历史 (executions.jsonl)${NC}"
 
-EXEC_FILES=(
-    "bots/daily_report/executions.jsonl"
-    "bots/investment/memory/store/executions.jsonl"
-    "bots/investment_ds/memory/store/executions.jsonl"
-)
+# 动态发现所有 executions.jsonl（只按文件名匹配，不会误删程序文件）
+mapfile -t EXEC_FILES < <(find . -name "executions.jsonl" -type f | sort)
 
-if [ "$CLEAN_EXECUTIONS" -eq 1 ]; then
+if [ "${#EXEC_FILES[@]}" -eq 0 ]; then
+    echo -e "  ${GREEN}✓${NC} 未发现任何 executions.jsonl，跳过"
+elif [ "$CLEAN_EXECUTIONS" -eq 1 ]; then
+    echo -e "  ${CYAN}发现 ${#EXEC_FILES[@]} 个文件：${NC}"
     for f in "${EXEC_FILES[@]}"; do
-        if [ -f "$f" ]; then
-            s=$(file_size "$f")
-            lines=$(wc -l < "$f" 2>/dev/null || echo 0)
-            do_action "清空 $f（${lines} 条记录）" "$s" truncate -s 0 "$f"
-        else
-            echo -e "  ${GREEN}✓${NC} $f 不存在，跳过"
-        fi
+        s=$(file_size "$f")
+        lines=$(wc -l < "$f" 2>/dev/null || echo 0)
+        do_action "清空 $f（${lines} 条记录）" "$s" truncate -s 0 "$f"
     done
 else
+    echo -e "  ${CYAN}发现 ${#EXEC_FILES[@]} 个文件：${NC}"
     for f in "${EXEC_FILES[@]}"; do
-        if [ -f "$f" ]; then
-            s=$(file_size "$f")
-            lines=$(wc -l < "$f" 2>/dev/null || echo 0)
-            echo -e "  ${YELLOW}⏭${NC}  跳过 $f（${lines} 条记录，$(human_size "$s")，使用 --executions 或 --all 清空）"
-        fi
+        s=$(file_size "$f")
+        lines=$(wc -l < "$f" 2>/dev/null || echo 0)
+        echo -e "  ${YELLOW}⏭${NC}  跳过 $f（${lines} 条记录，$(human_size "$s")，使用 --executions 或 --all 清空）"
     done
 fi
 echo ""
