@@ -6,3 +6,5 @@ python-dotenv      # .env 文件加载
 apscheduler        # 定时调度器（scheduler_runner）
 akshare            # A股数据源
 tushare            # 金融数据接口
+beautifulsoup4     # HTML 解析（URL抓取）
+html2text          # HTML 转 Markdown  
