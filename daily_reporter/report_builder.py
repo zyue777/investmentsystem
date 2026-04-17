@@ -6,8 +6,7 @@ import json
 import os
 import re
 import sys
-import urllib.request
-import urllib.error
+import requests
 from datetime import datetime
 
 _DIR = os.path.dirname(__file__)
@@ -38,34 +37,29 @@ SYSTEM_PROMPT = (
 # ── DeepSeek 调用 ─────────────────────────────────────────────────────────────
 
 def _call_deepseek(user_prompt: str, max_tokens: int = 1200) -> str:
-    payload = json.dumps({
-        "model": DEEPSEEK_MODEL,
-        "messages": [
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user",   "content": user_prompt},
-        ],
-        "max_tokens": max_tokens,
-    }).encode('utf-8')
-
-    req = urllib.request.Request(
-        DEEPSEEK_URL,
-        data=payload,
-        headers={
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
-        },
-        method="POST"
-    )
     try:
-        with urllib.request.urlopen(req, timeout=120) as resp:
-            result = json.loads(resp.read().decode('utf-8'))
-        choices = result.get('choices', [])
+        resp = requests.post(
+            DEEPSEEK_URL,
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
+            },
+            json={
+                "model": DEEPSEEK_MODEL,
+                "messages": [
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user",   "content": user_prompt},
+                ],
+                "max_tokens": max_tokens,
+            },
+            timeout=120,
+        )
+        if resp.status_code != 200:
+            return f"❌ HTTP错误 {resp.status_code}: {resp.text[:200]}"
+        choices = resp.json().get('choices', [])
         if choices:
             return choices[0].get('message', {}).get('content', '').strip()
         return "（DeepSeek 无输出）"
-    except urllib.error.HTTPError as e:
-        body = e.read().decode('utf-8', errors='ignore')
-        return f"❌ HTTP错误 {e.code}: {body[:200]}"
     except Exception as e:
         return f"❌ 调用失败: {e}"
 
