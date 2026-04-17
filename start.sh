@@ -14,6 +14,7 @@ set -e
 cd "$(dirname "$0")"
 
 # ── 环境变量 ──────────────────────────────────────────────────────────────────
+export ENABLE_CLAUDE_BOT=true
 export FEISHU_INVEST_APP_ID=cli_a94b502990f95cef
 export FEISHU_INVEST_APP_SECRET=mMREyz9A7h5kVFJFRRfMwbWKGumF52g6
 export FEISHU_DS_APP_ID=cli_a94ba9fabaf9dcbd

@@ -41,9 +41,12 @@ jobs:
           venv/bin/pip install --upgrade pip
           venv/bin/pip install -r requirements.txt
           
+          # 确保运行时目录存在（rsync 排除了这些目录）
+          mkdir -p logs
+
           # 给清理脚本加执行权限
           chmod +x clean.sh
-          
+
           # 使用 pm2 启动配置
           pm2 restart ecosystem.config.cjs || pm2 start ecosystem.config.cjs
           pm2 save

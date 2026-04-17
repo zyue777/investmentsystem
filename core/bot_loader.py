@@ -81,5 +81,9 @@ class BotLoader:
         raw = path.read_text(encoding='utf-8')
         raw = re.sub(r'\$\{(\w+)\}', lambda m: os.environ.get(m.group(1), ''), raw)
         data = yaml.safe_load(raw)
+        # 环境变量替换后 enabled 可能是空字符串，统一标准化为 bool
+        if 'enabled' in data and not isinstance(data['enabled'], bool):
+            v = str(data['enabled']).strip().lower()
+            data['enabled'] = v in ('true', '1', 'yes')
         return BotConfig(**{k: v for k, v in data.items() if k in BotConfig.__dataclass_fields__})
 

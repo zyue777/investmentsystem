@@ -1,7 +1,7 @@
 # bots/investment/bot.yaml
 name: investment
 label: "投研Bot"
-enabled: true
+enabled: ${ENABLE_CLAUDE_BOT}
 description: "AI投研助手：情报蒸馏、知识库管理、Phase调度"
 channel: feishu_ws
 channel_config:
