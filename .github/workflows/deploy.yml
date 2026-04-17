@@ -1,7 +1,7 @@
 name: Deploy Investment System
 on:
   push:
-    branches: [ main, master ]
+    branches: [ main, master, "feature/migration-workspace-0411" ]
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
