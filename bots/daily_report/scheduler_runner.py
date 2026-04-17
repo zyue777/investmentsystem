@@ -22,6 +22,10 @@ _BOT_DIR  = Path(__file__).parent
 _ROOT_DIR = _BOT_DIR.parent.parent
 sys.path.insert(0, str(_ROOT_DIR))
 
+# 加载 .env 环境变量（PM2 直接启动时不经过 start.sh，必须在此加载）
+from dotenv import load_dotenv
+load_dotenv(_ROOT_DIR / '.env')
+
 from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger
 

@@ -7,6 +7,10 @@ _ROOT = str(Path(__file__).parent)
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
+# 加载 .env 环境变量（PM2 直接启动时不经过 start.sh，必须在此加载）
+from dotenv import load_dotenv
+load_dotenv(Path(__file__).parent / '.env')
+
 from core.bot_loader import BotLoader
 
 

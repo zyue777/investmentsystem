@@ -1,3 +1,8 @@
-lark-oapi
-pyyaml
-requests
+lark-oapi          # 飞书 SDK
+httpx              # lark-oapi 底层 HTTP 依赖
+pyyaml             # YAML 配置解析
+requests           # HTTP 客户端
+python-dotenv      # .env 文件加载
+apscheduler        # 定时调度器（scheduler_runner）
+akshare            # A股数据源
+tushare            # 金融数据接口
