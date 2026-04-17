@@ -1,0 +1,49 @@
+name: Deploy Investment System
+on:
+  push:
+    branches: [ main, master ]
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+
+    - name: Write ENV File
+      run: |
+        echo "${{ secrets.ENV_FILE }}" > .env
+
+    - name: Rsync project to Server
+      uses: appleboy/scp-action@main
+      with:
+        host: ${{ secrets.SERVER_HOST }}
+        username: ${{ secrets.SERVER_USER }}
+        key: ${{ secrets.SERVER_SSH_KEY }}
+        source: "*,!logs,!data,!venv,!.git"
+        target: "/opt/apps/investment_system"
+        overwrite: true
+
+    - name: Install and Restart PM2 Services
+      uses: appleboy/ssh-action@master
+      with:
+        host: ${{ secrets.SERVER_HOST }}
+        username: ${{ secrets.SERVER_USER }}
+        key: ${{ secrets.SERVER_SSH_KEY }}
+        script: |
+          cd /opt/apps/investment_system
+          
+          # 创建 Python 虚拟环境（如果不存在）
+          if [ ! -d "venv" ]; then
+            python3 -m venv venv
+          fi
+          
+          # 安装依赖
+          venv/bin/pip install --upgrade pip
+          venv/bin/pip install -r requirements.txt
+          
+          # 给清理脚本加执行权限
+          chmod +x clean.sh
+          
+          # 使用 pm2 启动配置
+          pm2 restart ecosystem.config.cjs || pm2 start ecosystem.config.cjs
+          pm2 save
