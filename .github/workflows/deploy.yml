@@ -14,7 +14,7 @@ jobs:
         echo "${{ secrets.ENV_FILE }}" > .env
 
     - name: Rsync project to Server
-      uses: appleboy/scp-action@main
+      uses: appleboy/scp-action@v0.1.7
       with:
         host: ${{ secrets.SERVER_HOST }}
         username: ${{ secrets.SERVER_USER }}
@@ -24,7 +24,7 @@ jobs:
         overwrite: true
 
     - name: Install and Restart PM2 Services
-      uses: appleboy/ssh-action@master
+      uses: appleboy/ssh-action@v0.1.10
       with:
         host: ${{ secrets.SERVER_HOST }}
         username: ${{ secrets.SERVER_USER }}
