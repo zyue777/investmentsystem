@@ -8,3 +8,9 @@ akshare            # A股数据源
 tushare            # 金融数据接口
 beautifulsoup4     # HTML 解析（URL抓取）
 html2text          # HTML 转 Markdown  
+pdfplumber         # PDF 解析
+duckduckgo-search  # 搜索引擎抓取
+python-docx        # Word 解析
+pydantic           # 数据模型校验
+uvicorn            # web 后台
+fastapi            # API 框架
