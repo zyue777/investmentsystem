@@ -167,7 +167,7 @@ def handle(ctx: Context) -> Context:
         return _do_archive(ctx, session, bot_name)
 
     # ── 3. 清空退出 ──
-    if text in _CLEAR_CMDS:
+    if text.lower() in _CLEAR_CMDS:
         clear_session(ctx.user_id, bot_name)
         ctx.reply_text = "🗑️ 研究模式已退出，对话已清空"
         ctx.status = ContextStatus.SUCCESS
