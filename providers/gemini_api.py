@@ -16,8 +16,8 @@ _DEFAULT_SYSTEM = (
 class GeminiProvider(ProviderBase):
     def call(self, prompt: str, timeout: int = 300, cwd: str = "", **kwargs) -> str:
         api_key = kwargs.get('api_key') or os.environ.get('GEMINI_API_KEY', '')
-        # 默认使用 Gemini 1.5 Flash，速度极快且免费配额多
-        model = kwargs.get('model', 'gemini-1.5-flash')
+        # 默认使用 Gemini 2.5 Flash，旧版 1.5 已经被官方下线会报 404
+        model = kwargs.get('model', 'gemini-2.5-flash')
         system = kwargs.get('system', _DEFAULT_SYSTEM)
 
         if not api_key:

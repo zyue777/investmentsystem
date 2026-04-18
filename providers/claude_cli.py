@@ -8,10 +8,13 @@ MANIFEST = ProviderManifest(name="claude_cli", description="本地Claude CLI调�
 class ClaudeCLIProvider(ProviderBase):
     def call(self, prompt: str, timeout: int = 300, cwd: str = "", **kwargs) -> str:
         try:
+            import os
+            env = os.environ.copy()
+            env["IS_SANDBOX"] = "1"
             proc = subprocess.Popen(
                 ['claude', '--print', '--dangerously-skip-permissions', prompt],
-                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
-                cwd=cwd or None,
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.DEVNULL, text=True,
+                cwd=cwd or None, env=env
             )
             stdout, stderr = proc.communicate(timeout=timeout)
             if stdout.strip():
