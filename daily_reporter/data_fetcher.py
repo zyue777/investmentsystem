@@ -61,6 +61,9 @@ def _yf_price(ticker: str) -> dict:
         t = yf.Ticker(ticker)
         h = t.history(period='5d')
         if len(h) < 2:
+            if len(h) == 1:
+                close = round(float(h['Close'].iloc[-1]), 4)
+                return {'close': close, 'prev_close': close, 'pct_chg': 0.0}
             return {'error': '数据不足'}
         close = round(float(h['Close'].iloc[-1]), 4)
         prev  = round(float(h['Close'].iloc[-2]), 4)
@@ -312,15 +315,16 @@ def fetch_morning_stock() -> dict:
     else:
         data['VIX恐慌指数'] = '[数据缺失]'
 
-    # 美元指数 & 人民币汇率
-    data['美元指数DXY'] = _fmt_price(_yf_price('DX-Y.NYB'))
-    rmb_d = _yf_price('CNY=X')   # 在岸 USD/CNY，离岸 CNH 走势基本一致
-    if 'error' not in rmb_d:
-        pct  = rmb_d['pct_chg']
-        sign = '+' if pct >= 0 else ''
-        # pct>0 表示美元升值/人民币贬值
-        direction = '（人民币贬值）' if pct > 0.1 else ('（人民币升值）' if pct < -0.1 else '')
-        data['美元/人民币'] = f"{rmb_d['close']}  {sign}{pct}%{direction}"
+    # 美元指数 & 离岸人民币汇率
+    dxy_d = _yf_price('DX-Y.NYB')
+    if 'error' not in dxy_d:
+        data['美元指数DXY'] = f"{dxy_d['close']}"
+    else:
+        data['美元指数DXY'] = '[数据缺失]'
+
+    cnh_d = _yf_price('CNH=X')
+    if 'error' not in cnh_d:
+        data['美元/人民币'] = f"{cnh_d['close']}"
     else:
         data['美元/人民币'] = '[数据缺失]'
 
@@ -372,26 +376,25 @@ def fetch_morning_stock() -> dict:
     except Exception:
         data['财联社快讯'] = '[数据缺失]'
 
-    # 今日宏观日程（多抓几行，交给 DeepSeek 过滤重要事件）
+    # 今日宏观日程（WallStreetCN 接口抓取 importance>=3 的高优宏观事件）
     try:
-        cal = ak.news_economic_baidu()
-        if not cal.empty:
-            today = datetime.now().strftime('%Y-%m-%d')
-            if 'date' in cal.columns:
-                rows = cal[cal['date'].astype(str).str.startswith(today)]
-            else:
-                rows = cal.head(10)
-            if not rows.empty:
-                # 把全部列都拼出来，让 AI 能看到时间、事项、重要性等字段
-                lines = []
-                for _, r in rows.head(10).iterrows():
-                    lines.append('  |  '.join(str(v) for v in r.values if str(v).strip()))
-                data['宏观日历'] = '\n'.join(lines)
-            else:
-                data['宏观日历'] = '[无重要事件]'
-        else:
-            data['宏观日历'] = '[数据缺失]'
-    except Exception:
+        import time
+        from datetime import datetime
+        today_str = datetime.now().strftime('%Y-%m-%d')
+        today_ts = int(time.mktime(time.strptime(today_str, "%Y-%m-%d")))
+        w_url = f"https://api-one.wallstcn.com/apiv1/finance/macrodatas?start={today_ts}&end={today_ts+86400}"
+        _req = urllib.request.Request(w_url, headers={'User-Agent': 'Mozilla/5.0'})
+        with urllib.request.urlopen(_req, timeout=10) as r:
+            w_data = json.loads(r.read().decode())
+        items = w_data.get('data', {}).get('items', [])
+        lines = []
+        for item in items:
+            if item.get('importance', 0) >= 3:
+                dt_str = datetime.fromtimestamp(item['public_date']).strftime('%H:%M')
+                lines.append(f"{dt_str} | {item.get('country', '')} | {item.get('title', '')} | 星级:{item.get('importance')}")
+        data['宏观日历'] = '\\n'.join(lines) if lines else '[今日无三星级以上宏观事件]'
+    except Exception as e:
+        print(f"[data_fetcher] 宏观日历失败: {e}")
         data['宏观日历'] = '[数据缺失]'
 
     # ── 华尔街见闻早餐（7:30发布，抓标题含"华尔街见闻早餐"的当天快讯）────────
@@ -615,6 +618,26 @@ def fetch_morning_commodity() -> dict:
             data['生猪'] = '[数据缺失]'
     else:
         data['生猪'] = '[数据缺失]'
+
+    # ── 大宗商品关联重大资讯（WallStreetCN commodity-channel，最近15条）─────────────────
+    try:
+        wscn_headers = {'User-Agent': 'Mozilla/5.0'}
+        mr = urllib.request.Request(
+            'https://api-one.wallstcn.com/apiv1/content/lives?channel=commodity-channel&limit=15',
+            headers=wscn_headers
+        )
+        with urllib.request.urlopen(mr, timeout=10) as r:
+            cmitems = json.loads(r.read().decode()).get('data', {}).get('items', [])
+        clines = []
+        for ci in cmitems:
+            ctit = ci.get('title', '')
+            cbody = ci.get('content_text', '')
+            txt = (ctit + " " + cbody).strip().replace('\\n', ' ')
+            if txt: clines.append("- " + txt[:150])
+        data['近期商品资讯'] = '\\n'.join(clines) if clines else '[暂无大宗商品资讯]'
+    except Exception as e:
+        print(f"[data_fetcher] 获取大宗商品资讯失败: {e}")
+        data['近期商品资讯'] = '[大宗资讯获取失败]'
 
     data['生成时间'] = datetime.now().strftime('%Y-%m-%d %H:%M')
     return data
