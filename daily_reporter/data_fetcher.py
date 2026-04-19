@@ -697,13 +697,13 @@ def fetch_watchlist() -> dict:
     try:
         df = ak.stock_info_global_cls()
         if not df.empty:
-            ai_kws = ['AI', '人工智能', '大模型', 'GPT', 'Gemini', '芯片', '英伟达',
-                      'OpenAI', 'DeepSeek', '算力']
+            import re
+            ai_pattern = re.compile(r'人工智能|大模型|GPT|Gemini|英伟达|OpenAI|DeepSeek|算力|芯片|\bAI\b')
             ai_news = []
             for _, row in df.iterrows():
                 text = str(row.get('标题', '') or '') + str(row.get('内容', '') or '')
-                if any(k in text for k in ai_kws):
-                    ai_news.append(text[:100])
+                if ai_pattern.search(text):
+                    ai_news.append(text[:250])
                     if len(ai_news) >= 1:
                         break
             data['AI行业动态'] = ai_news[0] if ai_news else '[今日暂无AI重大新闻]'
