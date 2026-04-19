@@ -369,7 +369,7 @@ def _build_turn_prompt(topic: str, question: str, history: str,
 def _search_web(question: str) -> tuple[str, list[dict]]:
     """联网搜索（零 Token）。返回 (格式化文本, 原始结果列表)。"""
     from tools.web_search import search_web, format_results
-    results = search_web(question, max_results=5)
+    results = search_web(question, max_results=4)
     return format_results(results), results
 
 
