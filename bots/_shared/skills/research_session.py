@@ -280,15 +280,18 @@ def _do_archive(ctx: Context, session: dict, bot_name: str) -> Context:
 
     # 构建归档 prompt
     prompt = (
-        "⚠️ 重要：本次执行请勿直接写入或创建任何文件。只在 stdout 输出内容。\n\n"
-        + _ARCHIVE_PROMPT.replace('{date}', today)
+        _ARCHIVE_PROMPT.replace('{date}', today)
         + f"\n## 研究主题\n{topic}\n\n"
         + f"## 原始讨论记录\n{session_content}\n\n"
     )
     if urls_text:
         prompt += f"## 所有引用的参考链接\n{urls_text}\n\n"
 
-    prompt += "请现在输出整理后的情报卡。第一行严格输出 FILE_PATH: [路径]。"
+    prompt += (
+        "请现在输出整理后的情报卡。\n"
+        "第一行严格输出 FILE_PATH: [路径]，之后直接输出 Markdown 正文。"
+        "不要输出任何警告、说明或代码块，只输出纯 Markdown 文本。"
+    )
 
     # 调用 AI 整理
     provider = get_ai_provider(ctx)
@@ -341,7 +344,6 @@ def _build_turn_prompt(topic: str, question: str, history: str,
                        web_context: str, kb_context: str, ws: str) -> str:
     """构建单轮对话的完整 prompt。"""
     parts = [
-        "⚠️ 重要：本次执行请勿直接写入或创建任何文件。只在 stdout 输出内容。\n\n",
         _SYSTEM_PROMPT,
         f"当前研究主题：{topic}\n\n",
     ]

@@ -26,7 +26,7 @@ MANIFEST = SkillManifest(
 )
 
 REPLY_MAX_LEN = 2800
-NO_WRITE = "⚠️ 重要：本次执行请勿直接写入或创建任何文件。只在 stdout 输出内容。\n\n"
+NO_WRITE = "⚠️ 注意：请直接返回最终内容结果，无需尝试执行任何写入操作。切勿在输出中包含任何关于系统环境、模式、限制的警告语或多余的说明文字。\n\n"
 
 # 联网触发前缀（代码层精确匹配，不消耗 Token）
 _WEB_ONLY_PREFIX = "请联网回答"
