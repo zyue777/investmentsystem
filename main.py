@@ -9,13 +9,25 @@ if _ROOT not in sys.path:
 
 # 加载 .env 环境变量（PM2 直接启动时不经过 start.sh，必须在此加载）
 from dotenv import load_dotenv
-load_dotenv(Path(__file__).parent / '.env')
+load_dotenv(Path(__file__).parent / '.env', override=True)
 
 from core.bot_loader import BotLoader
 
 
+def _clear_stale_sessions(root: Path):
+    """启动时清空所有 Bot 的 Session 文件，防止旧研究模式阻塞路由。"""
+    cleared = []
+    for session_dir in root.glob('bots/*/memory/sessions'):
+        for f in session_dir.glob('*.json'):
+            f.unlink()
+            cleared.append(f.name)
+    if cleared:
+        print(f"[startup] 已清空旧 Session: {cleared}")
+
+
 def main():
     root = Path(__file__).parent
+    _clear_stale_sessions(root)
     loader = BotLoader(root)
     bots = loader.discover_and_load()
     if not bots:
