@@ -113,23 +113,25 @@ bash start.sh --daemon   # 重启生效，无需修改其他文件
 
 ## 🔄 开机自启（已配置）
 
-电脑开机后 **自动启动所有服务**，无需手动操作。
+电脑开机后 **无需任何手动操作**，两套服务自动启动：
 
-原理：`crontab @reboot` → 等待 30 秒（网络就绪）→ 执行 `bash start.sh --daemon`
+| 服务 | 触发方式 | 说明 |
+|------|---------|------|
+| 云端 Bot（investment_ds）| crontab `@reboot` | 30s 后执行 `start.sh --daemon`，日志：`logs/boot.log` |
+| Claude relay 转发服务 | GNOME autostart | 登录桌面后 20s 执行 `启动Claude转发服务.sh`，日志：`logs/autostart.log` |
+
+**Claude relay** 启动后会自动：建立 cloudflared 隧道 → 更新云端 .env → 重启云端 Claude Bot → 发送飞书上线通知。
 
 ```bash
-# 查看当前自启配置
+# 查看 crontab 自启配置
 crontab -l
 
-# 关闭开机自启（编辑后删掉那一行即可）
-crontab -e
+# 查看 GNOME autostart 配置
+cat ~/.config/autostart/claude-relay.desktop
 
-# 重新开启
-(crontab -l 2>/dev/null; echo "@reboot sleep 30 && cd /home/zy/investment_system && /bin/bash start.sh --daemon >> /home/zy/investment_system/logs/boot.log 2>&1") | crontab -
+# 手动重新启动 relay 服务
+bash ~/桌面/CLOUD/启动Claude转发服务.sh
 ```
-
-
-启动日志：`logs/boot.log`
 
 ---
 
