@@ -9,9 +9,9 @@ module.exports = {
       watch: false,
       log_date_format: "YYYY-MM-DD HH:mm Z",
       env: {
-        http_proxy: "http://127.0.0.1:10809",
-        https_proxy: "http://127.0.0.1:10809",
-        all_proxy: "socks5://127.0.0.1:10808",
+        http_proxy: "http://127.0.0.1:10810",
+        https_proxy: "http://127.0.0.1:10810",
+        all_proxy: "http://127.0.0.1:10810",
         ENABLE_CLAUDE_BOT: ""
       }
     },
@@ -24,9 +24,9 @@ module.exports = {
       watch: false,
       log_date_format: "YYYY-MM-DD HH:mm Z",
       env: {
-        http_proxy: "http://127.0.0.1:10809",
-        https_proxy: "http://127.0.0.1:10809",
-        all_proxy: "socks5://127.0.0.1:10808"
+        http_proxy: "http://127.0.0.1:10810",
+        https_proxy: "http://127.0.0.1:10810",
+        all_proxy: "http://127.0.0.1:10810"
       }
     },
     {
