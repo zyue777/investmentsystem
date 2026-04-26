@@ -1,10 +1,10 @@
-"""DeepSeek API Provider。"""
+"""DeepSeek API Provider（使用 OpenAI SDK）。"""
 import os
-import requests
+from openai import OpenAI
 from providers.base import ProviderBase
 from core.context import ProviderManifest
 
-MANIFEST = ProviderManifest(name="deepseek_api", description="DeepSeek Chat API")
+MANIFEST = ProviderManifest(name="deepseek_api", description="DeepSeek Chat API（OpenAI SDK）")
 
 # 投研助手通用 system prompt（与 Claude 的 CLAUDE.md 角色对齐）
 _DEFAULT_SYSTEM = (
@@ -16,7 +16,6 @@ _DEFAULT_SYSTEM = (
 
 
 class DeepSeekProvider(ProviderBase):
-    API_URL = "https://api.deepseek.com/chat/completions"
 
     def call(self, prompt: str, timeout: int = 300, cwd: str = "", **kwargs) -> str:
         api_key = kwargs.get('api_key') or os.environ.get('DEEPSEEK_API_KEY', '')
@@ -26,33 +25,31 @@ class DeepSeekProvider(ProviderBase):
         if not api_key:
             return "❌ 未设置 DEEPSEEK_API_KEY"
 
+        client = OpenAI(
+            api_key=api_key,
+            base_url="https://api.deepseek.com",
+            timeout=timeout,
+        )
+
         messages = []
         if system:
             messages.append({"role": "system", "content": system})
         messages.append({"role": "user", "content": prompt})
 
         try:
-            resp = requests.post(
-                self.API_URL,
-                headers={
-                    "Authorization": f"Bearer {api_key}",
-                    "Content-Type": "application/json",
-                },
-                json={"model": model, "messages": messages},
-                timeout=timeout,
+            response = client.chat.completions.create(
+                model=model,
+                messages=messages,
+                stream=False,
+                reasoning_effort="high",
+                extra_body={"thinking": {"type": "enabled"}},
             )
-            if resp.status_code == 429:
-                return "⏸️ AI 额度暂时耗尽（rate limit）"
-            if resp.status_code != 200:
-                return f"❌ DeepSeek HTTP错误 {resp.status_code}: {resp.text[:200]}"
-            data = resp.json()
-            choices = data.get('choices', [])
-            if not choices:
-                return "（DeepSeek 无输出）"
-            return choices[0]['message']['content'].strip()
-        except requests.Timeout:
-            return f"❌ 超时（{timeout}s）"
+            content = response.choices[0].message.content
+            return content.strip() if content else "（DeepSeek 无输出）"
         except Exception as e:
+            err = str(e)
+            if "429" in err:
+                return "⏸️ AI 额度暂时耗尽（rate limit）"
             return f"❌ DeepSeek 失败: {e}"
 
     def check_available(self) -> bool:
@@ -61,4 +58,3 @@ class DeepSeekProvider(ProviderBase):
 
 def create_provider():
     return DeepSeekProvider()
-
