@@ -1,21 +1,24 @@
 # daily_reporter/report_builder.py
-# 组装 prompt → 调用 DeepSeek → 返回报告文本
+# 组装 prompt → 调用 Gemini → 返回报告文本
 # 被 scheduler.py（定时）和 bot_gemini/bot.py（按需）共同调用
 
 import json
 import os
 import re
 import sys
-import requests
 from datetime import datetime
 
 _DIR = os.path.dirname(__file__)
 with open(os.path.join(_DIR, 'config.json'), 'r', encoding='utf-8') as _f:
     _CFG = json.load(_f)
 
-DEEPSEEK_API_KEY = _CFG['deepseek_api_key']
-DEEPSEEK_URL     = "https://api.deepseek.com/v1/chat/completions"
-DEEPSEEK_MODEL   = "deepseek-chat"
+# ── Gemini Provider ──────────────────────────────────────────────────────────
+import importlib.util as _ilu
+_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _root not in sys.path:
+    sys.path.insert(0, _root)
+from providers.gemini_api import GeminiProvider as _GeminiProvider
+_gemini = _GeminiProvider()
 
 SYSTEM_PROMPT = (
     "你是越越的财经助手，负责撰写每日财经报告。"
@@ -34,34 +37,11 @@ SYSTEM_PROMPT = (
 )
 
 
-# ── DeepSeek 调用 ─────────────────────────────────────────────────────────────
+# ── Gemini 调用 ──────────────────────────────────────────────────────────────
 
-def _call_deepseek(user_prompt: str, max_tokens: int = 1200) -> str:
-    try:
-        resp = requests.post(
-            DEEPSEEK_URL,
-            headers={
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
-            },
-            json={
-                "model": DEEPSEEK_MODEL,
-                "messages": [
-                    {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user",   "content": user_prompt},
-                ],
-                "max_tokens": max_tokens,
-            },
-            timeout=120,
-        )
-        if resp.status_code != 200:
-            return f"❌ HTTP错误 {resp.status_code}: {resp.text[:200]}"
-        choices = resp.json().get('choices', [])
-        if choices:
-            return choices[0].get('message', {}).get('content', '').strip()
-        return "（DeepSeek 无输出）"
-    except Exception as e:
-        return f"❌ 调用失败: {e}"
+def _call_gemini(user_prompt: str, max_tokens: int = 1200) -> str:
+    """调用 Gemini 生成报告文本。max_tokens 参数保留签名兼容性，实际由 Gemini 控制。"""
+    return _gemini.call(user_prompt, system=SYSTEM_PROMPT)
 
 
 # ── 数据格式化辅助 ────────────────────────────────────────────────────────────
@@ -118,7 +98,7 @@ def build_morning_stock(data: dict) -> str:
 
 ⚠️ 防幻觉规则：所有数字和事件必须来自以上数据字段。任何字段标注为[数据缺失][未发布][获取失败]的，对应内容写"数据暂缺"，不得补充推测数据。"""
 
-    return _call_deepseek(prompt)
+    return _call_gemini(prompt)
 
 
 # 大宗商品 → A股板块传导映射（只列涨跌幅≥2%的品种，纯 Python 拼接，不走 AI）
@@ -214,7 +194,7 @@ WTI原油     [价格]$   [涨跌幅]
 
 【整体判断】1句话（仅基于数据事实）"""
 
-    result = _call_deepseek(prompt, max_tokens=1800)
+    result = _call_gemini(prompt, max_tokens=1800)
     return result + _build_commodity_hook(data)
 
 
@@ -222,7 +202,7 @@ WTI原油     [价格]$   [涨跌幅]
 
 def _write_diary_entries(diary_text: str, stocks: dict):
     """
-    解析 DeepSeek 输出的 [DIARY]...[/DIARY] 内容并写入日记文件。
+    解析 Gemini 输出的 [DIARY]...[/DIARY] 内容并写入日记文件。
     格式：中文股票名|1-2句基本面摘要
     """
     try:
@@ -257,7 +237,7 @@ def build_watchlist(data: dict) -> str:
     stocks = data.get('stocks', {})
     ai_news = data.get('AI行业动态', '[数据缺失]')
 
-    # 格式化自选股数据（含 StockTwits 原文，供 DeepSeek 提炼）
+    # 格式化自选股数据（含 StockTwits 原文，供 Gemini 提炼）
     stock_lines = []
     for name, info in stocks.items():
         ticker = info.get('ticker', '')
@@ -304,7 +284,7 @@ def build_watchlist(data: dict) -> str:
 （每只股票一行，格式：中文股票名|1-2句基本面摘要，只写原文直接支持的观点，无数据写"暂无"）
 [/DIARY]"""
 
-    full_output = _call_deepseek(prompt)
+    full_output = _call_gemini(prompt)
 
     # 解析报告部分（fallback：使用全部输出）
     report_match = re.search(r'\[REPORT\](.*?)\[/REPORT\]', full_output, re.DOTALL)
@@ -341,7 +321,7 @@ def build_review(data: dict) -> str:
 【今日驱动】逐条列出核心因素（2-4条，每条一行，必须来自数据；无数据则写"暂无足够信息"）
 【结构信号】若今日波动不大，分析资金在哪些方向聚集/撤离（无数据则跳过此节）"""
 
-    return _call_deepseek(prompt)
+    return _call_gemini(prompt)
 
 
 # ── 5. 午间复盘 ───────────────────────────────────────────────────────────────
@@ -371,7 +351,7 @@ def build_midday_review(data: dict) -> str:
 
 注意：板块点评只写数字事实，无新闻支撑则不写原因。"""
 
-    return _call_deepseek(prompt)
+    return _call_gemini(prompt)
 
 
 # ── 6. 周末汇总 ───────────────────────────────────────────────────────────────
@@ -417,7 +397,7 @@ def build_weekend_summary(data: dict) -> str:
 
 【值得关注的信号】若新闻数据中有明确的重要信号，列出1-2条。若数据不足，写"数据不足，暂不点评"。"""
 
-    return _call_deepseek(prompt)
+    return _call_gemini(prompt)
 
 
 # ── 快捷入口（供 bot 按需调用）────────────────────────────────────────────────

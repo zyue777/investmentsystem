@@ -1,10 +1,10 @@
-"""Gemini API Provider。Gemini 出错时自动降级到 DeepSeek API。"""
+"""Gemini API Provider。"""
 import os
 import requests
 from providers.base import ProviderBase
 from core.context import ProviderManifest
 
-MANIFEST = ProviderManifest(name="gemini_api", description="Google Gemini API（出错时自动降级到 DeepSeek）")
+MANIFEST = ProviderManifest(name="gemini_api", description="Google Gemini API")
 
 _DEFAULT_SYSTEM = (
     "你是一个专业的AI投研助手，帮助用户进行股票研究、行业分析和知识管理。"
@@ -13,20 +13,6 @@ _DEFAULT_SYSTEM = (
     "铁律：只使用用户消息中明确提供的数据，禁止编造、推断或补充任何未提供的数字。"
 )
 
-
-def _call_deepseek_fallback(prompt: str, system: str, timeout: int) -> str:
-    """降级专用：直接调用 DeepSeek API，不依赖 Provider 注册表。"""
-    from providers.deepseek_api import DeepSeekProvider
-    ds = DeepSeekProvider()
-    return ds.call(prompt, timeout=timeout, system=system)
-
-
-def _fallback_response(err_reason: str, ds_result: str) -> str:
-    """格式化降级回复：错误通知 + DeepSeek 正常输出。"""
-    notice = f"⚠️ Gemini 出错（{err_reason}），已自动切换到 DeepSeek\n"
-    if ds_result.startswith("❌"):
-        return f"{notice}\n❌ DeepSeek 也失败了：{ds_result}"
-    return f"{notice}\n---\n\n{ds_result}"
 
 
 class GeminiProvider(ProviderBase):
@@ -58,14 +44,11 @@ class GeminiProvider(ProviderBase):
                 timeout=timeout,
             )
 
-            # ── 非 200 时全部降级到 DeepSeek ─────────────────────────────────
+            # ── 非 200 直接返回错误 ───────────────────────────────────────────
             if resp.status_code != 200:
-                reason = f"HTTP {resp.status_code}"
-                print(f"[gemini_api] ⚠️ Gemini {reason}，自动降级到 DeepSeek...")
-                ds_result = _call_deepseek_fallback(prompt, system, timeout)
-                if ds_result.startswith("❌"):
-                    print(f"[gemini_api] ❌ DeepSeek 降级也失败: {ds_result[:100]}")
-                return _fallback_response(reason, ds_result)
+                reason = f"HTTP {resp.status_code}: {resp.text[:200]}"
+                print(f"[gemini_api] ❌ Gemini 失败: {reason}")
+                return f"❌ Gemini 出错：{reason}"
             # ─────────────────────────────────────────────────────────────────
 
             data = resp.json()
@@ -77,19 +60,11 @@ class GeminiProvider(ProviderBase):
             text = candidates[0].get('content', {}).get('parts', [{}])[0].get('text', '')
             return text.strip() or "（Gemini 内容为空）"
         except requests.Timeout:
-            reason = f"请求超时（{timeout}s）"
-            print(f"[gemini_api] ⚠️ Gemini {reason}，自动降级到 DeepSeek...")
-            ds_result = _call_deepseek_fallback(prompt, system, timeout)
-            if ds_result.startswith("❌"):
-                print(f"[gemini_api] ❌ DeepSeek 降级也失败: {ds_result[:100]}")
-            return _fallback_response(reason, ds_result)
+            print(f"[gemini_api] ❌ Gemini 请求超时（{timeout}s）")
+            return f"❌ Gemini 超时，请稍后再试"
         except Exception as e:
-            reason = f"异常: {e}"
-            print(f"[gemini_api] ⚠️ Gemini {reason}，自动降级到 DeepSeek...")
-            ds_result = _call_deepseek_fallback(prompt, system, timeout)
-            if ds_result.startswith("❌"):
-                print(f"[gemini_api] ❌ DeepSeek 降级也失败: {ds_result[:100]}")
-            return _fallback_response(reason, ds_result)
+            print(f"[gemini_api] ❌ Gemini 异常: {e}")
+            return f"❌ Gemini 异常: {e}"
 
     def check_available(self) -> bool:
         return bool(os.environ.get('GEMINI_API_KEY'))
