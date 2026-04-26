@@ -20,7 +20,7 @@ class DeepSeekProvider(ProviderBase):
 
     def call(self, prompt: str, timeout: int = 300, cwd: str = "", **kwargs) -> str:
         api_key = kwargs.get('api_key') or os.environ.get('DEEPSEEK_API_KEY', '')
-        model = kwargs.get('model', 'deepseek-chat')
+        model = kwargs.get('model', 'deepseek-v4-flash')
         system = kwargs.get('system', _DEFAULT_SYSTEM)
 
         if not api_key:
