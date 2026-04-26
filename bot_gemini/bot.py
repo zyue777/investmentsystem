@@ -1,10 +1,11 @@
 # bot_gemini/bot.py
-# 飞书机器人 —— 基于 DeepSeek API（OpenAI 兼容格式）+ 飞书长连接（WebSocket）
+# 飞书机器人 —— 基于 GeminiProvider + 飞书长连接（WebSocket）
 #
 # 特性：
 #   - 录入/更新 操作先展示计划，回复「确认」才实际写文件（类似 Claude Code）
 #   - 自由提问主动判断，按需引用知识库
 #   - 按需报告：发「晨报」「商品报」「自选股」「复盘」即时生成对应报告
+#   - AI 调用统一走 providers/gemini_api.py，换模型只需换 Provider
 
 import json
 import os
@@ -51,13 +52,15 @@ CONFIG_PATH = os.path.join(os.path.dirname(__file__), 'config.json')
 with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
     CONFIG = json.load(f)
 
-APP_ID           = CONFIG['app_id']
-APP_SECRET       = CONFIG['app_secret']
-DEEPSEEK_API_KEY = CONFIG.get('deepseek_api_key', '')
-KB_PATH          = os.path.expanduser(CONFIG.get('kb_path', '~/kb'))
+APP_ID     = CONFIG['app_id']
+APP_SECRET = CONFIG['app_secret']
+KB_PATH    = os.path.expanduser(CONFIG.get('kb_path', '~/kb'))
 
-DEEPSEEK_URL   = "https://api.deepseek.com/v1/chat/completions"
-DEEPSEEK_MODEL = "deepseek-chat"
+# ── AI Provider（统一走 GeminiProvider，换模型只需换 Provider 类）────────────
+import sys as _sys
+_sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from providers.gemini_api import GeminiProvider as _GeminiProvider
+_provider = _GeminiProvider()
 
 REPLY_MAX_LEN      = 3000
 LATEST_RESULT_FILE = '04_Private_Knowledge/_Raw_Inbox/latest_result_deepseek.md'
@@ -157,10 +160,10 @@ def truncate_reply(text: str) -> str:
 
 def cmd_status() -> str:
     return (
-        "✅ bot_deepseek 运行中（长连接模式）\n"
+        "✅ bot_gemini 运行中（长连接模式）\n"
         f"  知识库：{KB_PATH}\n"
         f"  文件数：{len(list_kb_files())}\n"
-        f"  模型：{DEEPSEEK_MODEL}"
+        f"  模型：Gemini（providers/gemini_api.py）"
     )
 
 
@@ -170,7 +173,7 @@ def cmd_directory() -> str:
 
 def cmd_help() -> str:
     return (
-        "📋 可用指令列表（DeepSeek 投研助理）\n\n"
+        "📋 可用指令列表（Gemini 投研助理）\n\n"
         "【按需报告 — 随时发随时生成】\n"
         "  晨报        股票晨报（美股/港股/A股盘前）\n"
         "  商品报      大宗商品晨报（能源/金属/农产品/黑色系）\n"
@@ -192,43 +195,18 @@ def cmd_help() -> str:
     )
 
 
-# ── 调用 DeepSeek API ─────────────────────────────────────────────────────────
+# ── 调用 AI Provider ──────────────────────────────────────────────────────────
 
-def call_deepseek(messages: list) -> str:
-    """通过 urllib 调用 DeepSeek（OpenAI 兼容），超时 120 秒"""
-    if not DEEPSEEK_API_KEY or DEEPSEEK_API_KEY.startswith('填入'):
-        return "❌ 请先在 config.json 中填入 DeepSeek API Key"
-
-    payload = json.dumps({
-        "model": DEEPSEEK_MODEL,
-        "messages": messages,
-        "max_tokens": 4096,
-    }).encode('utf-8')
-
-    req = urllib.request.Request(
-        DEEPSEEK_URL,
-        data=payload,
-        headers={
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
-        },
-        method="POST"
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=120) as resp:
-            result = json.loads(resp.read().decode('utf-8'))
-        choices = result.get('choices', [])
-        if choices:
-            text = choices[0].get('message', {}).get('content', '').strip()
-            return text if text else "（DeepSeek 无输出）"
-        return "（DeepSeek 返回空候选列表）"
-    except urllib.error.HTTPError as e:
-        body = e.read().decode('utf-8', errors='ignore')
-        return f"❌ DeepSeek HTTP 错误 {e.code}: {body[:300]}"
-    except urllib.error.URLError as e:
-        return f"❌ DeepSeek 网络错误: {e.reason}"
-    except Exception as e:
-        return f"❌ DeepSeek 调用异常: {e}"
+def call_ai(messages: list) -> str:
+    """
+    将 OpenAI 风格的 messages 列表转为 GeminiProvider 调用。
+    换模型只需修改模块顶部的 _provider 实例。
+    """
+    system_parts = [m['content'] for m in messages if m.get('role') == 'system']
+    user_parts   = [m['content'] for m in messages if m.get('role') == 'user']
+    system = '\n'.join(system_parts) if system_parts else ''
+    prompt = '\n'.join(user_parts)
+    return _provider.call(prompt, system=system)
 
 
 # ── 解析写入计划 ──────────────────────────────────────────────────────────────
@@ -465,7 +443,7 @@ def handle_message_async(open_id: str, raw_text: str):
             }
         ]
         send_text_message(token, open_id, "⏳ 正在蒸馏，预计 20-40 秒...")
-        _distill_reply = call_deepseek(_distill_msgs)
+        _distill_reply = call_ai(_distill_msgs)
         # 解析写入计划并进入确认流程
         _parsed = parse_write_plan(_distill_reply)
         if _parsed:
@@ -564,9 +542,9 @@ def handle_message_async(open_id: str, raw_text: str):
             content = text[len(p) + 1:].strip()
             break
 
-    # ⑤ 调用 DeepSeek
+    # ⑤ 调用 AI Provider
     messages  = build_messages(prefix, content)
-    raw_reply = call_deepseek(messages)
+    raw_reply = call_ai(messages)
 
     # ⑥ 写入操作：解析计划，等待确认
     if prefix in ('录入', '更新'):
@@ -653,7 +631,7 @@ def on_message_receive(data: P2ImMessageReceiveV1) -> None:
 # ── 启动长连接 ────────────────────────────────────────────────────────────────
 
 if __name__ == '__main__':
-    print(f"[bot_deepseek] 启动中，知识库 {KB_PATH}，模型 {DEEPSEEK_MODEL}")
+    print(f"[bot_gemini] 启动中，知识库 {KB_PATH}，AI Provider: GeminiProvider")
 
     event_handler = (
         lark.EventDispatcherHandler.builder("", "")
