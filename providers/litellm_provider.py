@@ -39,7 +39,7 @@ _DEFAULT_SYSTEM = (
 _GEMINI_FALLBACK_CHAIN = [
     "gemini/gemini-2.5-flash",
     "gemini/gemini-2.0-flash",
-    "gemini/gemini-1.5-flash",
+    "gemini/gemini-flash-latest",
 ]
 
 def _build_fallbacks(primary_model: str) -> list:
