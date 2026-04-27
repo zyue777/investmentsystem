@@ -2,12 +2,13 @@ module.exports = {
   apps: [
     {
       name: "invest-main",
-      script: "venv/bin/python",
+      script: "/home/zy/miniconda3/envs/investment_bot/bin/python",
       args: "main.py",
       interpreter: "none",
       autorestart: true,
       watch: false,
       log_date_format: "YYYY-MM-DD HH:mm Z",
+      // 注： API Key 不写在这里，由 main.py 内部的 load_dotenv 从 .env 加载
       env: {
         http_proxy: "http://127.0.0.1:10810",
         https_proxy: "http://127.0.0.1:10810",
@@ -17,12 +18,13 @@ module.exports = {
     },
     {
       name: "invest-scheduler",
-      script: "venv/bin/python",
+      script: "/home/zy/miniconda3/envs/investment_bot/bin/python",
       args: "bots/daily_report/scheduler_runner.py",
       interpreter: "none",
       autorestart: true,
       watch: false,
       log_date_format: "YYYY-MM-DD HH:mm Z",
+      // 注： API Key 不写在这里，由 scheduler_runner.py 内部的 load_dotenv 从 .env 加载
       env: {
         http_proxy: "http://127.0.0.1:10810",
         https_proxy: "http://127.0.0.1:10810",

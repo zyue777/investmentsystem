@@ -1,7 +1,6 @@
 {
   "app_id": "cli_a94ba9fabaf9dcbd",
   "app_secret": "FZYbOlgeIpkcLSFXP7fkfdNIUoUWky6q",
-  "deepseek_api_key": "sk-714dfdeaddcf40cfbb8c16584c56cf9c",
   "kb_path": "/home/zy/桌面/投研工作台",
   "port": 5001
 }

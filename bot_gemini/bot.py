@@ -1,11 +1,11 @@
 # bot_gemini/bot.py
-# 飞书机器人 —— 基于 GeminiProvider + 飞书长连接（WebSocket）
+# 飞书机器人 —— 基于 LiteLLM Provider + 飞书长连接（WebSocket）
 #
 # 特性：
 #   - 录入/更新 操作先展示计划，回复「确认」才实际写文件（类似 Claude Code）
 #   - 自由提问主动判断，按需引用知识库
 #   - 按需报告：发「晨报」「商品报」「自选股」「复盘」即时生成对应报告
-#   - AI 调用统一走 providers/gemini_api.py，换模型只需换 Provider
+#   - AI 调用统一走 providers/factory.py，换模型只改 .env 中的 AI_MODEL
 
 import json
 import os
@@ -24,6 +24,11 @@ _ROOT_DIR   = os.path.dirname(_BOT_DIR)
 _SHARED_DIR = os.path.join(_ROOT_DIR, 'shared')
 sys.path.insert(0, _ROOT_DIR)
 sys.path.insert(0, _SHARED_DIR)
+
+# 加载 .env（PM2 直接启动时不经过 start.sh，必须在此加载）
+from dotenv import load_dotenv
+load_dotenv(_ROOT_DIR + '/.env', override=True)
+
 from shared.feishu_utils import get_tenant_access_token, send_text_message
 
 # ── user_registry：记录用户 open_id，供 scheduler 主动推送使用 ────────────────
@@ -56,11 +61,15 @@ APP_ID     = CONFIG['app_id']
 APP_SECRET = CONFIG['app_secret']
 KB_PATH    = os.path.expanduser(CONFIG.get('kb_path', '~/kb'))
 
-# ── AI Provider（统一走 GeminiProvider，换模型只需换 Provider 类）────────────
-import sys as _sys
-_sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from providers.gemini_api import GeminiProvider as _GeminiProvider
-_provider = _GeminiProvider()
+# ── AI Provider（统一走 factory，换模型只改 .env）────────────────────────
+from providers.factory import get_provider as _get_provider_factory
+_provider_instance = None
+
+def _get_provider():
+    global _provider_instance
+    if _provider_instance is None:
+        _provider_instance = _get_provider_factory()
+    return _provider_instance
 
 REPLY_MAX_LEN      = 3000
 LATEST_RESULT_FILE = '04_Private_Knowledge/_Raw_Inbox/latest_result_deepseek.md'
@@ -199,14 +208,14 @@ def cmd_help() -> str:
 
 def call_ai(messages: list) -> str:
     """
-    将 OpenAI 风格的 messages 列表转为 GeminiProvider 调用。
-    换模型只需修改模块顶部的 _provider 实例。
+    将 OpenAI 风格的 messages 列表转为 Provider 调用。
+    换模型只改 .env 中的 AI_MODEL，此函数无需修改。
     """
     system_parts = [m['content'] for m in messages if m.get('role') == 'system']
     user_parts   = [m['content'] for m in messages if m.get('role') == 'user']
     system = '\n'.join(system_parts) if system_parts else ''
     prompt = '\n'.join(user_parts)
-    return _provider.call(prompt, system=system)
+    return _get_provider().call(prompt, system=system)
 
 
 # ── 解析写入计划 ──────────────────────────────────────────────────────────────

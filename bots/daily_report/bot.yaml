@@ -6,7 +6,7 @@ description: "定时推送每日行情报告（晨报/午间复盘/收盘复盘/
 channel: scheduler          # 由内置 APScheduler 驱动，不监听飞书消息
 channel_config:
   timezone: "Asia/Shanghai"
-ai_provider: deepseek_api
+ai_provider: litellm
 feishu_app_id: ${FEISHU_DS_APP_ID}       # 复用 DS Bot 的飞书应用推送
 feishu_app_secret: ${FEISHU_DS_APP_SECRET}
 max_concurrent: 2

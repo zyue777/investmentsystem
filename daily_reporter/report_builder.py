@@ -1,6 +1,7 @@
 # daily_reporter/report_builder.py
-# 组装 prompt → 调用 Gemini → 返回报告文本
+# 组装 prompt → 调用 AI（通过 providers/factory.py）→ 返回报告文本
 # 被 scheduler.py（定时）和 bot_gemini/bot.py（按需）共同调用
+# 换模型：只改 .env 中的 AI_MODEL 变量，此文件无需改动
 
 import json
 import os
@@ -12,13 +13,21 @@ _DIR = os.path.dirname(__file__)
 with open(os.path.join(_DIR, 'config.json'), 'r', encoding='utf-8') as _f:
     _CFG = json.load(_f)
 
-# ── Gemini Provider ──────────────────────────────────────────────────────────
+# ── AI Provider（通过工厂获取，换模型只改 .env）────────────────────────────
 import importlib.util as _ilu
 _root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _root not in sys.path:
     sys.path.insert(0, _root)
-from providers.gemini_api import GeminiProvider as _GeminiProvider
-_gemini = _GeminiProvider()
+from providers.factory import get_provider as _get_provider
+
+# 惰性初始化：模块加载时不实例化，首次调用时才创建
+_provider_instance = None
+
+def _get_ai_provider():
+    global _provider_instance
+    if _provider_instance is None:
+        _provider_instance = _get_provider()
+    return _provider_instance
 
 SYSTEM_PROMPT = (
     "你是越越的财经助手，负责撰写每日财经报告。"
@@ -37,11 +46,11 @@ SYSTEM_PROMPT = (
 )
 
 
-# ── Gemini 调用 ──────────────────────────────────────────────────────────────
+# ── AI 调用 ──────────────────────────────────────────────────────────────────
 
-def _call_gemini(user_prompt: str, max_tokens: int = 1200) -> str:
-    """调用 Gemini 生成报告文本。max_tokens 参数保留签名兼容性，实际由 Gemini 控制。"""
-    return _gemini.call(user_prompt, system=SYSTEM_PROMPT)
+def _call_ai(user_prompt: str, max_tokens: int = 1200) -> str:
+    """调用 AI Provider 生成报告文本。换模型只改 .env，此函数无需改动。"""
+    return _get_ai_provider().call(user_prompt, system=SYSTEM_PROMPT)
 
 
 # ── 数据格式化辅助 ────────────────────────────────────────────────────────────
@@ -98,7 +107,7 @@ def build_morning_stock(data: dict) -> str:
 
 ⚠️ 防幻觉规则：所有数字和事件必须来自以上数据字段。任何字段标注为[数据缺失][未发布][获取失败]的，对应内容写"数据暂缺"，不得补充推测数据。"""
 
-    return _call_gemini(prompt)
+    return _call_ai(prompt)
 
 
 # 大宗商品 → A股板块传导映射（只列涨跌幅≥2%的品种，纯 Python 拼接，不走 AI）
@@ -194,7 +203,7 @@ WTI原油     [价格]$   [涨跌幅]
 
 【整体判断】1句话（仅基于数据事实）"""
 
-    result = _call_gemini(prompt, max_tokens=1800)
+    result = _call_ai(prompt, max_tokens=1800)
     return result + _build_commodity_hook(data)
 
 
@@ -284,7 +293,7 @@ def build_watchlist(data: dict) -> str:
 （每只股票一行，格式：中文股票名|1-2句基本面摘要，只写原文直接支持的观点，无数据写"暂无"）
 [/DIARY]"""
 
-    full_output = _call_gemini(prompt)
+    full_output = _call_ai(prompt)
 
     # 解析报告部分（fallback：使用全部输出）
     report_match = re.search(r'\[REPORT\](.*?)\[/REPORT\]', full_output, re.DOTALL)
@@ -321,7 +330,7 @@ def build_review(data: dict) -> str:
 【今日驱动】逐条列出核心因素（2-4条，每条一行，必须来自数据；无数据则写"暂无足够信息"）
 【结构信号】若今日波动不大，分析资金在哪些方向聚集/撤离（无数据则跳过此节）"""
 
-    return _call_gemini(prompt)
+    return _call_ai(prompt)
 
 
 # ── 5. 午间复盘 ───────────────────────────────────────────────────────────────
@@ -351,7 +360,7 @@ def build_midday_review(data: dict) -> str:
 
 注意：板块点评只写数字事实，无新闻支撑则不写原因。"""
 
-    return _call_gemini(prompt)
+    return _call_ai(prompt)
 
 
 # ── 6. 周末汇总 ───────────────────────────────────────────────────────────────
@@ -397,7 +406,7 @@ def build_weekend_summary(data: dict) -> str:
 
 【值得关注的信号】若新闻数据中有明确的重要信号，列出1-2条。若数据不足，写"数据不足，暂不点评"。"""
 
-    return _call_gemini(prompt)
+    return _call_ai(prompt)
 
 
 # ── 快捷入口（供 bot 按需调用）────────────────────────────────────────────────

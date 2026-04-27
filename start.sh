@@ -1,8 +1,8 @@
 #!/bin/bash
-# Agent Hub 统一启动脚本 v2
-# 管理三个服务：
-#   1. main.py          — Agent Hub 主进程（investment Claude Bot + investment_ds DeepSeek Bot）
-#   2. scheduler_runner — daily_report 定时报告Bot（DeepSeek驱动）
+# Agent Hub 统一启动脚本 v3
+# 管理两个服务：
+#   1. main.py          — Agent Hub 主进程（投研 Gemini/Kimi/... Bot）
+#   2. scheduler_runner — daily_report 定时报告Bot
 #
 # 用法:
 #   bash start.sh           # 前台调试（Ctrl+C 退出）
@@ -13,13 +13,10 @@
 set -e
 cd "$(dirname "$0")"
 
-# ── 环境变量 ──────────────────────────────────────────────────────────────────
-export ENABLE_CLAUDE_BOT=true
-export FEISHU_INVEST_APP_ID=cli_a94b502990f95cef
-export FEISHU_INVEST_APP_SECRET=mMREyz9A7h5kVFJFRRfMwbWKGumF52g6
-export FEISHU_DS_APP_ID=cli_a94ba9fabaf9dcbd
-export FEISHU_DS_APP_SECRET=FZYbOlgeIpkcLSFXP7fkfdNIUoUWky6q
-export DEEPSEEK_API_KEY=sk-714dfdeaddcf40cfbb8c16584c56cf9c
+# ── 环境变量（从 .env 统一加载，换模型/加key只改 .env）───────────────────────────
+set -a           # 自动 export 所有变量
+source .env      # 将 .env 的全部变量导入当前 shell 和子进程
+set +a           # 关闭自动 export
 
 # ── conda Python 路径 ─────────────────────────────────────────────────────────
 PYTHON="$HOME/miniconda3/envs/investment_bot/bin/python"
