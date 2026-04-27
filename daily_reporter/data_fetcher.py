@@ -267,7 +267,12 @@ def _fetch_stocktwits_raw(ticker: str, max_msgs: int = 8) -> list:
     import html as _html
     url = f'https://api.stocktwits.com/api/2/streams/symbol/{ticker}.json?limit={max_msgs}'
     try:
-        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+        req = urllib.request.Request(url, headers={
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'application/json',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Referer': 'https://stocktwits.com/'
+        })
         with urllib.request.urlopen(req, timeout=10) as r:
             data = json.loads(r.read().decode('utf-8'))
         result = []
