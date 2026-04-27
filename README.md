@@ -27,66 +27,38 @@ tail -f logs/main.log    # 查看实时日志
 
 ## 🤖 更换 AI 模型
 
-系统的 AI 调用分两条独立路径，按需修改对应位置即可。
+系统采用**「插座」设计**：Claude Bot 独立，其余所有 Bot（晨报/复盘/自选股/对话）统一走 LiteLLM 通用层。
 
-### 路径一：每日报告（晨报 / 复盘 / 自选股等）
+**换模型只需修改 `.env` 两行，然后重启：**
 
-**文件**：`daily_reporter/report_builder.py`
+```bash
+# 当前（Gemini 2.5 Flash）
+AI_MODEL=gemini/gemini-2.5-flash
+GEMINI_API_KEY=your_gemini_key
 
-顶部初始化区域（约第 17 行）写死了使用哪个 Provider：
+# 切换 Kimi：
+AI_MODEL=moonshot/moonshot-v1-8k
+MOONSHOT_API_KEY=your_kimi_key
 
-```python
-from providers.gemini_api import GeminiProvider as _GeminiProvider
-_gemini = _GeminiProvider()
+# 切换 DeepSeek：
+AI_MODEL=deepseek/deepseek-chat
+DEEPSEEK_API_KEY=your_deepseek_key
+
+# 重启
+bash start.sh --daemon
 ```
 
-换成其他 Provider 只需改这两行，例如换回 DeepSeek：
+> ⚠️ **Claude Bot（投研Bot）是特例**，走独立的 claude_cli 通道，**不受 AI_MODEL 影响，不要动它**。
 
-```python
-from providers.deepseek_api import DeepSeekProvider as _GeminiProvider
-_gemini = _GeminiProvider()
-```
+> 📊 **Gemini 免费配额自动降级链**（内置，无需手动了）：
+> ```
+> gemini-2.5-flash → 限流后自动切换 gemini-2.0-flash → gemini-1.5-flash
+> ```
+> 三个模型配额分开计算，2.5 用完了自动用 2.0，无感切换。
 
-> 注意：`_call_gemini()` 函数名只是内部别名，无需改名，直接改 import 即可。
-
----
-
-### 路径二：Bot 对话（用户主动发消息触发的 AI 回复）
-
-**文件**：`providers/gemini_api.py`（当前主力 Provider）
-
-修改默认模型型号：
-
-```python
-# GeminiProvider.call() 方法内（约第 22 行）
-model = kwargs.get('model', 'gemini-2.5-flash')   # ← 改这里
-```
-
-**常用可用模型**（2026年）：
-
-| 模型名 | 特点 |
-|---|---|
-| `gemini-2.5-flash` | 当前默认，速度快，性价比最高 ✅ |
-| `gemini-2.5-pro` | 更强推理，token 消耗更高 |
-| `gemini-2.0-flash` | 上一代 Flash，稳定备用 |
-
----
-
-### 路径三：整体换成其他 Provider（如 DeepSeek / OpenAI）
-
-1. 确认 `providers/` 下已有对应文件（如 `deepseek_api.py`）
-2. 在 `.env` 配置对应 API Key：
-   ```
-   DEEPSEEK_API_KEY=sk-xxx
-   ```
-3. 修改 `report_builder.py` 顶部 import（见路径一）
-4. 修改 `providers/gemini_api.py` 如不再需要可保持不动，bot 层另配
-5. 重启服务：`bash start.sh --daemon`
-
-> ⚠️ **费用提醒**：
-> - DeepSeek `deepseek-chat`（V3）**按 token 计费**，大报告单次可达数千 token，一次晨报可能扣 10 元+。
-> - **Gemini 2.5 Flash** 有较大免费额度，日常报告几乎零成本，**强烈建议优先使用 Gemini**。
-> - 如需切回 DeepSeek，务必确认 `DEEPSEEK_API_KEY` 在 `.env` 中配置正确（当前保留但不使用）。
+> 💡 **费用提醒**：
+> - **Gemini Flash 系列**有较大免费额度，日常报告几乎零成本。
+> - DeepSeek 按 token 计费，大报告单次可达数千 token，谨慎开启。
 
 ---
 

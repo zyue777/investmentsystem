@@ -35,6 +35,22 @@ _DEFAULT_SYSTEM = (
 )
 
 
+# Gemini 免费层降级链（限流时自动尝试下一个，无需手动切换）
+_GEMINI_FALLBACK_CHAIN = [
+    "gemini/gemini-2.5-flash",
+    "gemini/gemini-2.0-flash",
+    "gemini/gemini-1.5-flash",
+]
+
+def _build_fallbacks(primary_model: str) -> list:
+    """构建降级模型列表（排除主模型自身）。"""
+    if primary_model in _GEMINI_FALLBACK_CHAIN:
+        # 从主模型之后的位置开始作为备用
+        idx = _GEMINI_FALLBACK_CHAIN.index(primary_model)
+        return _GEMINI_FALLBACK_CHAIN[idx + 1:]
+    return []  # 非 Gemini 模型不自动降级
+
+
 class LiteLLMProvider(ProviderBase):
     """通用 LiteLLM Provider。model 从 AI_MODEL 环境变量读取。"""
 
@@ -58,6 +74,8 @@ class LiteLLMProvider(ProviderBase):
                 model=model,
                 messages=messages,
                 timeout=timeout,
+                # 自动降级链：主模型限流时依次尝试备用模型，无需手动切换
+                fallbacks=_build_fallbacks(model),
             )
             return resp.choices[0].message.content or "（模型无输出）"
 
@@ -66,7 +84,7 @@ class LiteLLMProvider(ProviderBase):
             print(f"[litellm_provider] {msg}")
             return msg
         except litellm.RateLimitError as e:
-            msg = f"⏸️ 触发限流（{model}），请稍后重试: {e}"
+            msg = f"⏸️ 所有模型均触发限流，请稍后重试: {e}"
             print(f"[litellm_provider] {msg}")
             return msg
         except litellm.BadRequestError as e:
