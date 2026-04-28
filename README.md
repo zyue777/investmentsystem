@@ -155,6 +155,32 @@ bash start.sh --daemon   # 重启生效，无需修改其他文件
 
 **Claude relay** 启动后会自动：建立 cloudflared 隧道 → 更新云端 .env → 重启云端 Claude Bot → 发送飞书上线通知。
 
+> [!WARNING]
+> **已知坑：`pm2 restart` 不会更新环境变量**
+>
+> `trycloudflare` 每次重启分配新 URL，脚本会把新 URL 写入云端 `.env`，
+> 但如果 `pm2 restart invest-main` 不带 `--update-env`，PM2 会沿用进程启动时的旧环境变量，
+> 导致 Claude Bot 始终看不到新的 `CLAUDE_RELAY_URL`，回复 `❌ 未设置 CLAUDE_RELAY_URL`。
+>
+> **修复**（已在 `启动Claude转发服务.sh` 第 83 行修正）：
+> ```bash
+> pm2 restart invest-main --update-env   # ✅ 正确
+> pm2 restart invest-main                # ❌ 不会更新 env
+> ```
+>
+> **手动急救**（当前会话 relay 已在线但 Bot 还在报错时）：
+> ```bash
+> # 1. 查当前隧道 URL
+> grep "trycloudflare.com" ~/investment_system/logs/cloudflared.log | tail -1
+> # 2. 推 URL 到云端并重启（带 --update-env）
+> RELAY_URL="https://xxxx.trycloudflare.com"
+> ssh -i ~/桌面/CLOUD/test_key root@8.163.104.154 "
+>   cd /opt/apps/investment_system
+>   sed -i \"s|^CLAUDE_RELAY_URL=.*|CLAUDE_RELAY_URL=$RELAY_URL|\" .env || echo \"CLAUDE_RELAY_URL=$RELAY_URL\" >> .env
+>   pm2 restart invest-main --update-env
+> "
+> ```
+
 ```bash
 # 查看 crontab 自启配置
 crontab -l
