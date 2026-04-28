@@ -69,13 +69,24 @@ class LiteLLMProvider(ProviderBase):
             {"role": "user",   "content": prompt},
         ]
 
+        # 支持自定义 base_url（Kimi 中转站等 OpenAI 兼容接口）
+        api_base = kwargs.get("api_base") or os.environ.get("AI_API_BASE") or None
+        api_key  = kwargs.get("api_key")  or os.environ.get("AI_API_KEY")  or None
+
+        # litellm 用 httpx 发请求，httpx 会读 all_proxy/ALL_PROXY 环境变量。
+        # PM2 ecosystem 里设了 socks5 代理，但 httpx[socks] 未安装会直接崩溃。
+        # Kimi/DeepSeek 等国内接口不需要代理，临时清掉再恢复。
+        _proxy_keys = ("all_proxy", "ALL_PROXY", "HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy")
+        _saved_proxies = {k: os.environ.pop(k) for k in _proxy_keys if k in os.environ}
+
         try:
             resp = litellm.completion(
                 model=model,
                 messages=messages,
                 timeout=timeout,
-                # 自动降级链：主模型限流时依次尝试备用模型，无需手动切换
                 fallbacks=_build_fallbacks(model),
+                **({"api_base": api_base} if api_base else {}),
+                **({"api_key":  api_key}  if api_key  else {}),
             )
             return resp.choices[0].message.content or "（模型无输出）"
 
@@ -95,6 +106,8 @@ class LiteLLMProvider(ProviderBase):
             msg = f"❌ LiteLLM 调用异常（{model}）: {e}"
             print(f"[litellm_provider] {msg}")
             return msg
+        finally:
+            os.environ.update(_saved_proxies)
 
     def check_available(self) -> bool:
         try:

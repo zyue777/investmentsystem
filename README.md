@@ -27,38 +27,34 @@ tail -f logs/main.log    # 查看实时日志
 
 ## 🤖 更换 AI 模型
 
-系统采用**「插座」设计**：Claude Bot 独立，其余所有 Bot（晨报/复盘/自选股/对话）统一走 LiteLLM 通用层。
+**只改 `.env` 三行，推云端，重启。代码零改动。**
 
-**换模型只需修改 `.env` 两行，然后重启：**
+架构：`.env` → `providers/factory.py` → `providers/litellm_provider.py` → 任意模型
 
 ```bash
-# 当前（Gemini 2.5 Flash）
-AI_MODEL=gemini/gemini-2.5-flash
-GEMINI_API_KEY=your_gemini_key
-
-# 切换 Kimi：
-AI_MODEL=moonshot/moonshot-v1-8k
-MOONSHOT_API_KEY=your_kimi_key
-
-# 切换 DeepSeek：
-AI_MODEL=deepseek/deepseek-chat
-DEEPSEEK_API_KEY=your_deepseek_key
-
-# 重启
-bash start.sh --daemon
+# ── 换模型模板（改这三行）────────────────────────────────────────────────
+AI_MODEL=openai/kimi-k2.5                           # litellm 模型名
+AI_API_BASE=https://api.xiaocaseai.com/v1           # 中转/直连地址（无中转留空）
+AI_API_KEY=sk-xxx                                   # 对应 API Key
 ```
 
-> ⚠️ **Claude Bot（投研Bot）是特例**，走独立的 claude_cli 通道，**不受 AI_MODEL 影响，不要动它**。
+| 模型 | AI_MODEL | AI_API_BASE | 备注 |
+|------|----------|-------------|------|
+| Kimi k2.5 | `openai/kimi-k2.5` | `https://api.xiaocaseai.com/v1` | 国内直连，当前默认 |
+| Gemini 2.5 Flash | `gemini/gemini-2.5-flash` | （留空） | 需云端 xray 代理（10809）；key 从 aistudio.google.com 获取（`AIza`开头） |
+| DeepSeek | `deepseek/deepseek-chat` | （留空） | 国内直连，按量计费 |
 
-> 📊 **Gemini 免费配额自动降级链**（内置，无需手动了）：
-> ```
-> gemini-2.5-flash → 限流后自动切换 gemini-2.0-flash → gemini-1.5-flash
-> ```
-> 三个模型配额分开计算，2.5 用完了自动用 2.0，无感切换。
+推云端命令：
+```bash
+export http_proxy="" https_proxy="" all_proxy="" ALL_PROXY="" && \
+rsync -avz --exclude='.git' --exclude='venv' --exclude='__pycache__' \
+  -e "ssh -i /home/zy/桌面/CLOUD/test_key -o StrictHostKeyChecking=no" \
+  /home/zy/investment_system/ root@8.163.104.154:/opt/apps/investment_system/ && \
+ssh -i /home/zy/桌面/CLOUD/test_key -o StrictHostKeyChecking=no root@8.163.104.154 \
+  "pm2 restart invest-main invest-scheduler --update-env && echo '✅'"
+```
 
-> 💡 **费用提醒**：
-> - **Gemini Flash 系列**有较大免费额度，日常报告几乎零成本。
-> - DeepSeek 按 token 计费，大报告单次可达数千 token，谨慎开启。
+> **Gemini 代理验证**：`ssh root@8.163.104.154 "curl -s --proxy http://127.0.0.1:10809 https://ipinfo.io/ip"` 输出洛杉矶 IP 即通。
 
 ---
 

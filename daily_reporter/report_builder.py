@@ -1,6 +1,6 @@
 # daily_reporter/report_builder.py
 # 组装 prompt → 调用 AI（通过 providers/factory.py）→ 返回报告文本
-# 被 scheduler.py（定时）和 bot_gemini/bot.py（按需）共同调用
+# 被 scheduler.py（定时）和 daily_report_ondemand skill（按需）共同调用
 # 换模型：只改 .env 中的 AI_MODEL 变量，此文件无需改动
 
 import json
@@ -14,13 +14,11 @@ with open(os.path.join(_DIR, 'config.json'), 'r', encoding='utf-8') as _f:
     _CFG = json.load(_f)
 
 # ── AI Provider（通过工厂获取，换模型只改 .env）────────────────────────────
-import importlib.util as _ilu
 _root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _root not in sys.path:
     sys.path.insert(0, _root)
 from providers.factory import get_provider as _get_provider
 
-# 惰性初始化：模块加载时不实例化，首次调用时才创建
 _provider_instance = None
 
 def _get_ai_provider():
@@ -49,7 +47,6 @@ SYSTEM_PROMPT = (
 # ── AI 调用 ──────────────────────────────────────────────────────────────────
 
 def _call_ai(user_prompt: str, max_tokens: int = 1200) -> str:
-    """调用 AI Provider 生成报告文本。换模型只改 .env，此函数无需改动。"""
     return _get_ai_provider().call(user_prompt, system=SYSTEM_PROMPT)
 
 
