@@ -98,7 +98,7 @@ investment_system/
 ├── channels/            # 渠道适配：feishu_ws / cli
 ├── providers/           # AI引擎：claude_cli / gemini_api / deepseek_api（备用）
 ├── hooks/               # 全局中间件：dedup/auth/timer/audit
-├── tools/               # 共享工具：文件/飞书/搜索
+├── tools/               # 共享工具：文件/飞书/搜索/微信抓取+图表OCR
 │
 ├── bots/
 │   ├── _template/       # 新Bot模板（复制此目录开始）

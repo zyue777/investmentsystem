@@ -22,7 +22,7 @@ investment_system/
 ├── channels/       # 渠道适配器（目前只有 feishu_ws）
 ├── providers/      # AI 引擎适配器（claude_cli / deepseek_api）
 ├── hooks/          # 全局横切钩子（dedup / auth / timer / audit）
-├── tools/          # 无状态共享工具（飞书API / 文件IO / 搜索 / 联网搜索 / 会话记忆）
+├── tools/          # 无状态共享工具（飞书API / 文件IO / 搜索 / 联网搜索 / 微信抓取+图表OCR / 会话记忆）
 ├── bots/           # 各 Bot 业务代码
 │   ├── _shared/           # ⭐ 共享 Skills（所有 Bot 共用，只维护一份）
 │   │   └── skills/        #    12 个 Skill 文件（含 research_session）
