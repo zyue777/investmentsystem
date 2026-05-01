@@ -2,11 +2,12 @@ module.exports = {
   apps: [
     {
       name: "invest-main",
-      script: "/home/zy/miniconda3/envs/investment_bot/bin/python",
+      script: "venv/bin/python",
       args: "main.py",
       interpreter: "none",
       autorestart: true,
       watch: false,
+      max_memory_restart: "300M", // 超过300MB自动重启本进程（防OOM）
       log_date_format: "YYYY-MM-DD HH:mm Z",
       // 注： API Key 不写在这里，由 main.py 内部的 load_dotenv 从 .env 加载
       env: {
@@ -18,11 +19,12 @@ module.exports = {
     },
     {
       name: "invest-scheduler",
-      script: "/home/zy/miniconda3/envs/investment_bot/bin/python",
+      script: "venv/bin/python",
       args: "bots/daily_report/scheduler_runner.py",
       interpreter: "none",
       autorestart: true,
       watch: false,
+      max_memory_restart: "300M", // 超过300MB自动重启
       log_date_format: "YYYY-MM-DD HH:mm Z",
       // 注： API Key 不写在这里，由 scheduler_runner.py 内部的 load_dotenv 从 .env 加载
       env: {

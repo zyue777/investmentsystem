@@ -48,6 +48,7 @@ AI_API_KEY=sk-xxx                                   # 对应 API Key
 ```bash
 export http_proxy="" https_proxy="" all_proxy="" ALL_PROXY="" && \
 rsync -avz --exclude='.git' --exclude='venv' --exclude='__pycache__' \
+  --exclude='.env' \
   -e "ssh -i /home/zy/桌面/CLOUD/test_key -o StrictHostKeyChecking=no" \
   /home/zy/investment_system/ root@8.163.104.154:/opt/apps/investment_system/ && \
 ssh -i /home/zy/桌面/CLOUD/test_key -o StrictHostKeyChecking=no root@8.163.104.154 \
