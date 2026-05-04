@@ -75,3 +75,13 @@ phases:
     timeout: 300
     output_dir: "研究/自选股"
     needs_confirm: true
+
+  expression_training:
+    key: "expression_training"
+    label: "表达力训练"
+    prompt_file: "phases/phase_expression_training.md"
+    triggers: ["训练", "练嘴", "60秒", "模拟面试", "打磨"]
+    timeout: 300
+    output_dir: "投资哲学/碎片备忘/_Inbox"
+    needs_confirm: false
+
