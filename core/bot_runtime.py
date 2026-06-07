@@ -19,7 +19,10 @@ class BotConfig:
     enabled: bool = True
     channel: str = "feishu_ws"
     channel_config: dict = field(default_factory=dict)
-    ai_provider: str = "claude_cli"
+    ai_provider: str = "litellm"
+    ai_model: str = ""
+    ai_api_base: str = ""
+    ai_api_key: str = ""
     workspace: str = ""
     description: str = ""
     max_concurrent: int = 5

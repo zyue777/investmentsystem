@@ -2,8 +2,10 @@
 📝 文档引用：docs/00_架构总览.md「消息流转路径」
 ⚠️ 修改本文件影响所有 Bot 的执行链，修改前必须说明理由。
 """
+import os
 from core.context import Context, ContextStatus
 from core.bot_runtime import BotRuntime
+from providers.base import ProviderBase
 
 
 def execute_in_runtime(runtime: BotRuntime, ctx: Context) -> Context:
@@ -65,7 +67,7 @@ def execute_in_runtime(runtime: BotRuntime, ctx: Context) -> Context:
 
 
 def _resolve_provider_name(skill_manifest, phase_key, runtime) -> str:
-    """Provider 优先级：Skill指定 > Phase指定 > Bot默认 > claude_cli"""
+    """Provider 优先级：Skill指定 > Phase指定 > Bot默认 > litellm"""
     # 1. Skill 级
     if skill_manifest and getattr(skill_manifest, 'ai_provider', ''):
         return skill_manifest.ai_provider
@@ -78,7 +80,29 @@ def _resolve_provider_name(skill_manifest, phase_key, runtime) -> str:
     if runtime.config.ai_provider:
         return runtime.config.ai_provider
     # 4. 全局兜底
-    return 'claude_cli'
+    return 'litellm'
+
+
+def _bind_litellm_config(provider, runtime: BotRuntime):
+    """将 Bot 级 AI 配置绑定到 LiteLLM Provider（空字段 fallback 全局 env）。"""
+    cfg = runtime.config
+    bound = {
+        'model':    cfg.ai_model    or os.environ.get('AI_MODEL', ''),
+        'api_base': cfg.ai_api_base or os.environ.get('AI_API_BASE', '') or None,
+        'api_key':  cfg.ai_api_key  or os.environ.get('AI_API_KEY', '') or None,
+    }
+    # 过滤空值，让 litellm_provider 内部 fallback 生效
+    bound = {k: v for k, v in bound.items() if v}
+
+    class _BoundLiteLLMProvider(ProviderBase):
+        def call(self, prompt, timeout=300, cwd="", **kwargs):
+            merged = {**bound, **kwargs}
+            return provider.call(prompt, timeout, cwd, **merged)
+
+        def check_available(self):
+            return provider.check_available()
+
+    return _BoundLiteLLMProvider()
 
 
 def get_ai_provider(ctx: Context):
@@ -86,12 +110,13 @@ def get_ai_provider(ctx: Context):
     runtime = ctx.metadata.get('_runtime')
     if not runtime:
         return None
-    provider_name = ctx.ai_provider or 'claude_cli'
+    provider_name = ctx.ai_provider or 'litellm'
     provider = runtime.provider_registry.get_instance(provider_name)
     if not provider:
-        # 降级：如果指定 provider 不可用，尝试 Bot 默认
-        fallback = runtime.config.ai_provider or 'claude_cli'
+        fallback = runtime.config.ai_provider or 'litellm'
         if fallback != provider_name:
             print(f"[executor] {provider_name} 不可用，降级到 {fallback}")
             provider = runtime.provider_registry.get_instance(fallback)
+    if provider and provider_name == 'litellm':
+        return _bind_litellm_config(provider, runtime)
     return provider

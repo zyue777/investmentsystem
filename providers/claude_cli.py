@@ -1,4 +1,6 @@
-"""Claude CLI Provider — 通过本地 Relay 服务调用（绕过云端 claude.ai 封锁）。
+"""DEPRECATED: 已由 litellm + 中转站 API 替代，保留仅供回滚。
+
+Claude CLI Provider — 通过本地 Relay 服务调用（绕过云端 claude.ai 封锁）。
 
 云端无法直接运行 claude CLI（Cloudflare 封锁 claude.ai OAuth 验证），
 因此改为 HTTP 请求转发到本地电脑运行的 claude_relay_server.py。

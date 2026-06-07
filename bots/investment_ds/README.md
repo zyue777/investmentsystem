@@ -1,6 +1,6 @@
-# bots/investment_ds — DeepSeek 投研 Bot
+# bots/investment_ds — 投研 Bot(DS)（群2）
 
-> AI Provider：`deepseek_api` | 进程类型：子进程（`run_single_bot.py` 启动）
+> AI Provider：`litellm` | API：`AI_*_DS`（当前 DeepSeek V4 Pro 直连）| 进程类型：子进程（`run_single_bot.py` 启动）
 
 ## Skills 来源
 

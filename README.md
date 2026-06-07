@@ -1,6 +1,6 @@
 # Agent Hub — 投研 & 报告双Bot平台
 
-> 多Bot框架 · 飞书接入 · Claude + Gemini · 自动定时报告
+> 多Bot框架 · 飞书接入 · 双 litellm API · 自动定时报告
 
 ---
 
@@ -13,8 +13,8 @@ bash start.sh --daemon
 
 **就这一条命令**。脚本会自动：
 1. Kill 所有旧进程（幂等，可反复执行）
-2. 启动 Claude 投研 Bot（飞书群1）
-3. 启动 Gemini 投研 Bot（飞书群2）
+2. 启动投研 Bot（飞书群1，中转站 API）
+3. 启动投研 Bot(DS)（飞书群2，DeepSeek 直连）
 4. 启动每日报告调度器（晨报/午盘/收盘）
 
 ```bash
@@ -27,35 +27,42 @@ tail -f logs/main.log    # 查看实时日志
 
 ## 🤖 更换 AI 模型
 
-**只改 `.env` 三行，推云端，重启。代码零改动。**
+**双 Bot 独立配置，各改 `.env` 三行，推云端，重启。代码零改动。**
 
-架构：`.env` → `providers/factory.py` → `providers/litellm_provider.py` → 任意模型
+架构：`.env`（`AI_*_INVEST` / `AI_*_DS`）→ `executor.get_ai_provider()` → `litellm_provider`
 
 ```bash
-# ── 换模型模板（改这三行）────────────────────────────────────────────────
-AI_MODEL=openai/kimi-k2.5                           # litellm 模型名
-AI_API_BASE=https://api.xiaocaseai.com/v1           # 中转/直连地址（无中转留空）
-AI_API_KEY=sk-xxx                                   # 对应 API Key
+# ── 群1 Invest Bot（中转站 Claude）──
+AI_MODEL_INVEST=openai/claude-sonnet-4-6
+AI_API_BASE_INVEST=https://api.chr1.com/v1
+AI_API_KEY_INVEST=sk-xxx
+
+# ── 群2 DS Bot（DeepSeek 直连）──
+AI_MODEL_DS=openai/deepseek-v4-pro
+AI_API_BASE_DS=https://api.deepseek.com/v1
+AI_API_KEY_DS=sk-xxx
 ```
 
-| 模型 | AI_MODEL | AI_API_BASE | 备注 |
-|------|----------|-------------|------|
-| Kimi k2.5 | `openai/kimi-k2.5` | `https://api.xiaocaseai.com/v1` | 国内直连，当前默认 |
-| Gemini 2.5 Flash | `gemini/gemini-2.5-flash` | （留空） | 需云端 xray 代理（10809）；key 从 aistudio.google.com 获取（`AIza`开头） |
-| DeepSeek | `deepseek/deepseek-chat` | （留空） | 国内直连，按量计费 |
+| Bot | 模型示例 | API_BASE | 备注 |
+|-----|----------|----------|------|
+| Invest（群1） | `openai/claude-sonnet-4-6` | `https://api.chr1.com/v1` | 中转站，无需本地 relay |
+| DS（群2） | `openai/deepseek-v4-pro` | `https://api.deepseek.com/v1` | 国内直连 |
+| DS 备选 | `gemini/gemini-2.5-flash` | （留空） | 需云端 xray 代理（10810） |
+
+完整模板见 [`.env.example`](.env.example)。
 
 推云端命令：
 ```bash
 export http_proxy="" https_proxy="" all_proxy="" ALL_PROXY="" && \
 rsync -avz --exclude='.git' --exclude='venv' --exclude='__pycache__' \
   --exclude='.env' \
-  -e "ssh -i /home/zy/桌面/CLOUD/test_key -o StrictHostKeyChecking=no" \
+  -e "ssh -i ~/桌面/CLOUD/keys/test_key -o StrictHostKeyChecking=no" \
   /home/zy/investment_system/ root@8.163.104.154:/opt/apps/investment_system/ && \
-ssh -i /home/zy/桌面/CLOUD/test_key -o StrictHostKeyChecking=no root@8.163.104.154 \
+ssh -i ~/桌面/CLOUD/keys/test_key -o StrictHostKeyChecking=no root@8.163.104.154 \
   "pm2 restart invest-main invest-scheduler --update-env && echo '✅'"
 ```
 
-> **Gemini 代理验证**：`ssh root@8.163.104.154 "curl -s --proxy http://127.0.0.1:10809 https://ipinfo.io/ip"` 输出洛杉矶 IP 即通。
+> **Gemini 代理验证**：`ssh root@8.163.104.154 "curl -s --proxy http://127.0.0.1:10810 https://ipinfo.io/ip"` 输出洛杉矶 IP 即通。
 
 ---
 
@@ -91,20 +98,21 @@ ssh -i /home/zy/桌面/CLOUD/test_key -o StrictHostKeyChecking=no root@8.163.104
 
 ```
 investment_system/
+├── .env.example         # 环境变量模板（双 Bot API 配置）
 ├── main.py              # 系统入口
 ├── start.sh             # 一键启动/停止/状态
 ├── run_single_bot.py    # 子进程启动入口
 │
 ├── core/                # 框架核心（勿改）
 ├── channels/            # 渠道适配：feishu_ws / cli
-├── providers/           # AI引擎：claude_cli / gemini_api / deepseek_api（备用）
+├── providers/           # AI引擎：litellm（主）/ claude_cli（deprecated）
 ├── hooks/               # 全局中间件：dedup/auth/timer/audit
 ├── tools/               # 共享工具：文件/飞书/搜索/微信抓取+图表OCR
 │
 ├── bots/
 │   ├── _template/       # 新Bot模板（复制此目录开始）
-│   ├── investment/      # Claude 投研 Bot
-│   ├── investment_ds/   # Gemini 投研 Bot
+│   ├── investment/      # 投研 Bot 群1（litellm + 中转站）
+│   ├── investment_ds/   # 投研 Bot(DS) 群2（litellm + 直连）
 │   └── daily_report/    # 每日报告 Bot（定时驱动）
 │
 ├── daily_reporter/      # 数据抓取层（被 daily_report 复用）
@@ -147,51 +155,23 @@ bash start.sh --daemon   # 重启生效，无需修改其他文件
 
 ## 🔄 开机自启（已配置）
 
-电脑开机后 **无需任何手动操作**，两套服务自动启动：
-
 | 服务 | 触发方式 | 说明 |
 |------|---------|------|
-| 云端 Bot（investment_ds）| crontab `@reboot` | 30s 后执行 `start.sh --daemon`，日志：`logs/boot.log` |
-| Claude relay 转发服务 | GNOME autostart | 登录桌面后 20s 执行 `启动Claude转发服务.sh`，日志：`logs/autostart.log` |
+| 云端 Bot | crontab `@reboot` | 30s 后执行 `start.sh --daemon`，日志：`logs/boot.log` |
 
-**Claude relay** 启动后会自动：建立 cloudflared 隧道 → 更新云端 .env → 重启云端 Claude Bot → 发送飞书上线通知。
-
-> [!WARNING]
 > **已知坑：`pm2 restart` 不会更新环境变量**
 >
-> `trycloudflare` 每次重启分配新 URL，脚本会把新 URL 写入云端 `.env`，
-> 但如果 `pm2 restart invest-main` 不带 `--update-env`，PM2 会沿用进程启动时的旧环境变量，
-> 导致 Claude Bot 始终看不到新的 `CLAUDE_RELAY_URL`，回复 `❌ 未设置 CLAUDE_RELAY_URL`。
->
-> **修复**（已在 `启动Claude转发服务.sh` 第 83 行修正）：
+> 改了云端 `.env` 后必须：
 > ```bash
 > pm2 restart invest-main --update-env   # ✅ 正确
 > pm2 restart invest-main                # ❌ 不会更新 env
 > ```
->
-> **手动急救**（当前会话 relay 已在线但 Bot 还在报错时）：
-> ```bash
-> # 1. 查当前隧道 URL
-> grep "trycloudflare.com" ~/investment_system/logs/cloudflared.log | tail -1
-> # 2. 推 URL 到云端并重启（带 --update-env）
-> RELAY_URL="https://xxxx.trycloudflare.com"
-> ssh -i ~/桌面/CLOUD/test_key root@8.163.104.154 "
->   cd /opt/apps/investment_system
->   sed -i \"s|^CLAUDE_RELAY_URL=.*|CLAUDE_RELAY_URL=$RELAY_URL|\" .env || echo \"CLAUDE_RELAY_URL=$RELAY_URL\" >> .env
->   pm2 restart invest-main --update-env
-> "
-> ```
 
-```bash
-# 查看 crontab 自启配置
-crontab -l
+### 已废弃：Claude 本地 relay
 
-# 查看 GNOME autostart 配置
-cat ~/.config/autostart/claude-relay.desktop
-
-# 手动重新启动 relay 服务
-bash ~/桌面/CLOUD/启动Claude转发服务.sh
-```
+旧架构（本地 `claude_relay_server.py` → cloudflared → `claude_cli`）已废弃。
+Invest Bot 现通过 litellm + 中转站 API 直连，无需本地电脑开机。
+相关脚本保留仅供回滚：`~/桌面/CLOUD/scripts/启动Claude转发服务.sh`
 
 ---
 
@@ -219,7 +199,7 @@ bash clean.sh --dry-run    # 预览模式（不实际删除）
 
 - Python 3.10+（conda 环境 `investment_bot`）
 - 依赖：`akshare tushare yfinance lark-oapi apscheduler openai python-docx pdfplumber`
-- 环境变量：在 `start.sh` 中统一配置（主要：`GEMINI_API_KEY`、`FEISHU_*`）
+- 环境变量：`.env` 统一管理（模板：`.env.example`），主要：`AI_*_INVEST`、`AI_*_DS`、`FEISHU_*`
 
 ---
 

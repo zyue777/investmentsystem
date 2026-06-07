@@ -1,9 +1,11 @@
 """LiteLLM 通用 Provider —— 换插座层。
 
 设计原则：
-  - 这是所有"可替换模型 Bot"的唯一推理层入口
-  - 换模型只需修改 .env 中的 AI_MODEL 变量，无需改任何业务代码
-  - Claude CLI Bot 不经过此处（它有独立的 claude_cli provider）
+  - 这是所有投研 Bot 的统一推理层入口（investment + investment_ds）
+  - 双 Bot 独立 API：bot.yaml 中 ai_model/api_base/api_key 引用 env 前缀变量
+    · Invest Bot（群1）：AI_MODEL_INVEST / AI_API_BASE_INVEST / AI_API_KEY_INVEST
+    · DS Bot（群2）：    AI_MODEL_DS     / AI_API_BASE_DS     / AI_API_KEY_DS
+  - 未配 Bot 级前缀时 fallback 到全局 AI_MODEL / AI_API_BASE / AI_API_KEY
 
 支持的模型示例（改 .env 即可切换）：
   AI_MODEL=gemini/gemini-2.0-flash          ← 当前默认

@@ -20,17 +20,17 @@ investment_system/
 │                   #    executor.py — 所有 Bot 的执行链，改错影响全局
 │                   #    feishu_ws.py (channels/) — 所有消息入口，改错全部失联
 ├── channels/       # 渠道适配器（目前只有 feishu_ws）
-├── providers/      # AI 引擎适配器（claude_cli / deepseek_api）
+├── providers/      # AI 引擎适配器（litellm 主用 / claude_cli deprecated）
 ├── hooks/          # 全局横切钩子（dedup / auth / timer / audit）
 ├── tools/          # 无状态共享工具（飞书API / 文件IO / 搜索 / 联网搜索 / 微信抓取+图表OCR / 会话记忆）
 ├── bots/           # 各 Bot 业务代码
 │   ├── _shared/           # ⭐ 共享 Skills（所有 Bot 共用，只维护一份）
 │   │   └── skills/        #    12 个 Skill 文件（含 research_session）
-│   ├── investment/        # Claude 投研 Bot（主进程）
-│   │   ├── bot.yaml       #    配置（ai_provider / channel / workspace）
+│   ├── investment/        # 投研 Bot 群1（主进程，litellm + 中转站 API）
+│   │   ├── bot.yaml       #    配置（ai_provider / ai_model / channel / workspace）
 │   │   ├── skills/        #    空目录（如需覆盖共享 Skill，放同名文件到此处）
 │   │   └── prompts/       #    Phase prompt 文件 + registry.yaml
-│   ├── investment_ds/     # 通用模型投研 Bot（当前 Kimi k2.5，子进程）
+│   ├── investment_ds/     # 投研 Bot(DS) 群2（DeepSeek V4 Pro，子进程）
 │   │   ├── bot.yaml
 │   │   ├── skills/        #    空目录
 │   │   └── prompts/
@@ -77,12 +77,14 @@ investment_system/
 
 ## 两个投研 Bot 的核心分工
 
-| Bot | 目录 | AI Provider | 职责 |
-|-----|------|-------------|------|
-| investment | `bots/investment/` | claude_cli | Phase 调度、知识库写入、URL/文件/手动录入、问答 |
-| investment_ds | `bots/investment_ds/` | litellm_provider（当前 Kimi k2.5） | 同上（通用模型驱动，LiteLLM 插座，换模型只改 .env），独立飞书应用 |
+| Bot | 目录 | AI Provider | API 配置 | 职责 |
+|-----|------|-------------|----------|------|
+| investment | `bots/investment/` | litellm | `AI_*_INVEST`（中转站 Claude） | Phase 调度、知识库写入、URL/文件/手动录入、问答 |
+| investment_ds | `bots/investment_ds/` | litellm | `AI_*_DS`（DeepSeek 直连） | 同上，独立飞书应用 |
 
-两个 Bot 共用 `_shared/skills/`，功能完全一致，仅 AI 引擎不同。
+两个 Bot 共用 `_shared/skills/`，功能完全一致，仅 API 配置不同（换模型改 `.env` 对应前缀三行）。
+
+> `claude_cli` + 本地 relay 已废弃（`providers/claude_cli.py` 保留仅供回滚）。
 
 ---
 
@@ -138,7 +140,7 @@ Router 五层优先级（core/router.py）：
 
 > 两个 Bot 各自维护独立的 `prompts/registry.yaml`。DS Bot 已对齐新投研体系。
 
-**investment_ds（通用模型版，当前 Kimi k2.5）当前 Phase 列表：**
+**investment_ds（通用模型版，当前 DeepSeek V4 Pro）当前 Phase 列表：**
 
 | Phase | 触发词 | 需确认 | 输出路径 |
 |-------|--------|--------|----------|
@@ -206,7 +208,7 @@ Router 五层优先级（core/router.py）：
 | 修改目录结构 | CLAUDE.md + docs/00 |
 | 修改定时任务 | docs/02_运维与债务.md |
 | 新增技术债务 | docs/02_运维与债务.md |
-| 修改 Phase prompt 或 registry.yaml | 评估是否需同步到另一个 Bot 的 prompts/ |
+| 修改 Phase prompt 或 registry.yaml | 同步 `bots/investment/` 与 `bots/investment_ds/` 同名 prompts；若源文件在 `投研工作台/研究/prompts/`，Bot 版须合并 FILE_PATH 落盘规则 |
 
 > 如果不确定是否需要更新文档，默认更新 CLAUDE.md。
 

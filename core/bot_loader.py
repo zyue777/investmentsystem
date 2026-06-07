@@ -78,6 +78,9 @@ class BotLoader:
         print(f"[loader] 子进程启动 {bot_name} (PID={proc.pid})")
 
     def _load_config(self, path: Path) -> BotConfig:
+        # ENABLE_INVEST_BOT 未设置时 fallback 到旧变量 ENABLE_CLAUDE_BOT
+        if not os.environ.get('ENABLE_INVEST_BOT') and os.environ.get('ENABLE_CLAUDE_BOT'):
+            os.environ['ENABLE_INVEST_BOT'] = os.environ['ENABLE_CLAUDE_BOT']
         raw = path.read_text(encoding='utf-8')
         raw = re.sub(r'\$\{(\w+)\}', lambda m: os.environ.get(m.group(1), ''), raw)
         data = yaml.safe_load(raw)

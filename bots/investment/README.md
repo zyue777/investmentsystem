@@ -1,6 +1,6 @@
-# bots/investment — Claude 投研 Bot
+# bots/investment — 投研 Bot（群1）
 
-> AI Provider：`claude_cli` | 进程类型：主进程（`main.py` 直接加载）
+> AI Provider：`litellm` | API：`AI_*_INVEST`（中转站 Claude）| 进程类型：主进程（`main.py` 直接加载）
 
 ## Skills 来源
 
