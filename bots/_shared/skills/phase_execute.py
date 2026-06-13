@@ -141,4 +141,23 @@ def _parse_output(raw: str, today: str) -> tuple[str, str]:
     if not file_path:
         file_path = f"{today}_未分类.md"
         content = raw
+    content = _strip_code_fence(content)
     return file_path, content
+
+
+def _strip_code_fence(text: str) -> str:
+    """剥掉大模型把整卡包进 ```markdown/```yaml 代码块的外层围栏。
+    否则 frontmatter 掉进代码块，YAML 渗透检索读不到 industry/tags（2026-06-13 根治）。"""
+    lines = text.split('\n')
+    i = 0
+    while i < len(lines) and not lines[i].strip():
+        i += 1
+    if i < len(lines) and lines[i].lstrip().startswith('```'):
+        del lines[i]
+        for j in range(len(lines) - 1, -1, -1):
+            if not lines[j].strip():
+                continue
+            if lines[j].strip() == '```':
+                del lines[j]
+            break
+    return '\n'.join(lines)
